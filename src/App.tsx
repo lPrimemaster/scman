@@ -1,10 +1,11 @@
 import type { Component, JSXElement } from 'solid-js';
 import { Navigate, A, useNavigate } from '@solidjs/router';
-import { createEffect, createResource, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EventInput, Calendar as FCCalendar } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import ptLocale from '@fullcalendar/core/locales/pt';
 
 function getToken() {
 	return localStorage.getItem('token');
@@ -314,6 +315,11 @@ export const Register : Component = () => {
 				},
 				body: JSON.stringify({ token: item.token })
 			});
+
+			if(!res.ok) {
+				pushMessage('Erro ao apagar link.', 'error');
+			}
+
 			setCurrentItem(undefined); 
 			fetchAllLinks();
 		}
@@ -695,25 +701,246 @@ interface CTableData {
 	noanswer: Array<string>;
 };
 
-const Tooltip : Component<{ children?: JSXElement, description: string }> = (props) => {
-	const [show, setShow] = createSignal<boolean>(false);
+const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: CEvent }> = (props) => {
+	const [selfResponse, setSelfResponse] = createSignal<number>(-1);
+	const [enableVote, setEnableVote] = createSignal<boolean>(true);
+	const [tableData, setTableData] = createSignal<CTableData>();
+
+	async function updateTable(event: CEvent) {
+		const params = new URLSearchParams();
+		params.append('event', event.id.toString());
+		const data = await (await authFetch(`/api/attendance?${params}`)).json();
+
+		setTableData({
+			going: data.going.map((x: { full_name: string }) => { return x.full_name; }),
+			not_going: data.not_going.map((x: { full_name: string }) => { return x.full_name; }),
+			maybe: data.maybe.map((x: { full_name: string }) => { return x.full_name; }),
+			noanswer: data.noanswer.map((x: { full_name: string }) => { return x.full_name; })
+		});
+
+		setSelfResponse(data.self);
+	}
+
+	function eventTypeToName(type: number | undefined) {
+		if(type !== undefined) {
+			switch(type) {
+				case 0:  return 'Prova';
+				case 1:  return 'Estágio';
+				default: return 'Unknown';
+			}
+		}
+	}
+
+	async function setEventStatus(event: CEvent, status: number) {
+		const res = await authFetch('/api/sign_evt', {
+			method: 'POST',
+			body: JSON.stringify({ event_id: event.id, status: status })
+		});
+
+		if(!res.ok) {
+			pushMessage('Erro ao atualizar estado.', 'error');
+		} else {
+			console.log('Updating event');
+
+			const data = await res.json();
+			if(data.limit_reached) {
+				setEnableVote(false);
+			}
+
+			updateTable(event);
+		}
+	}
+
+	async function checkSignLimit() {
+		const event = props.event;
+		const params = new URLSearchParams();
+		params.append('id', (event?.id!).toString());
+		const res = await authFetch(`/api/sign_limit_reached?${params}`);
+		const data = await res.json();
+		setEnableVote(!data.status);
+	}
+
+	function computeGoogleCalendarLink() {
+
+		// BUG: (César) Locale is already set on the date internally
+		// 				This should be fixed. We should use ISO date instead and only parse for outputing
+
+		// HACK: (César)
+		const [sd, sm, sy] = props.event.start.split('/').map(Number);
+		const [ed, em, ey] = props.event.end.split('/').map(Number);
+
+		const sdate = sy + sm.toString().padStart(2, '0') + sd.toString().padStart(2, '0');
+		const edate = ey + em.toString().padStart(2, '0') + (ed + 1).toString().padStart(2, '0');
+
+		const params = new URLSearchParams({
+			action: 'TEMPLATE',
+			text: `[SC1925] ${props.event.name}`,
+			dates: `${sdate}/${edate}`,
+			details: `${eventTypeToName(props.event.type)}`,
+			location: props.event.location,
+			ctz: 'UTC'
+		});
+
+		return `https://calendar.google.com/calendar/render?${params.toString()}`;
+	}
+
+	function openGoogleCalendarWindow() {
+		const link = computeGoogleCalendarLink();
+
+		const width = window.screen.width * 0.9;
+		const height = window.screen.height * 0.9;
+
+		window.open(
+			link,
+			'google-calendar-popup',
+			`width=${width},height=${height},top=${(window.screen.height - height) / 2},left=${(window.screen.width - width) / 2},resizable=yes,scrollbars=yes`
+		);
+	}
+
+	createEffect(on(() => props.event, () => {
+		if(props.event) {
+			updateTable(props.event);
+			checkSignLimit();
+		}
+	}));
+
 	return (
-		<div
-			class='relative inline-block'
-			onMouseEnter={() => setShow(true)}
-			onMouseLeave={() => setShow(false)}
-			onFocus={() => setShow(true)}
-			onBlur={() => setShow(false)}
-		>
-			{props.children}
-			<Show when={show()}>
-				<div
-					class='absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-gray-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-50'
-				>
-					{props.description}
+		<Modal open={props.open} onChange={props.onChange}>
+			<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Evento</h2>
+			<h2 class='text-white pb-1 text-lg font-semibold text-center'>Informações</h2>
+			<div class='flex items-center place-content-center flex-wrap'>
+				<div class='flex-grow'>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium w-8 text-right'>Tipo</label>
+						<input
+							type='text'
+							value={eventTypeToName(props.event.type)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium w-8 text-right'>Nome</label>
+						<input
+							type='text'
+							value={props.event.name}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium w-8 text-right'>Local</label>
+						<input
+							type='text'
+							value={props.event.location}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+				</div>
+				<div class='flex-grow'>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium text-right w-1/8'>Início</label>
+						<input
+							type='text'
+							value={props.event.start}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium text-right w-1/8'>Fim</label>
+						<input
+							type='text'
+							value={props.event.end}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium text-right w-1/8'>Limite</label>
+						<input
+							type='text'
+							value={props.event.sub_limit_date}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+				</div>
+			</div>
+
+			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Comparência</h2>
+			<div class='flex gap-5 my-5 px-5 items-center text-md font-bold place-content-center'>
+				<div class='flex gap-2 flex-wrap place-content-center'>
+					<button
+						class={`w-32 border-2 border-green-600 rounded-md px-5 py-2 cursor-pointer hover:bg-green-700 transition disabled:text-gray-400 disabled:border-green-800 disabled:cursor-not-allowed ${selfResponse() === 1 ? 'disabled:bg-green-700 bg-green-700' : 'disabled:hover:bg-transparent'}`}
+						onClick={() => setEventStatus(props.event, 1)}
+						disabled={!enableVote() || selfResponse() === 1}
+					>
+						Vou
+					</button>
+					<button
+						class={`w-32 border-2 border-yellow-600 rounded-md px-5 py-2 cursor-pointer hover:bg-yellow-700 transition disabled:text-gray-400 disabled:border-yellow-800 disabled:cursor-not-allowed ${selfResponse() === 2 ? 'disabled:bg-yellow-700 bg-yellow-700' : 'disabled:hover:bg-transparent'}`}
+						onClick={() => setEventStatus(props.event, 2)}
+						disabled={!enableVote() || selfResponse() === 2}
+					>
+						Talvez
+					</button>
+					<button
+						class={`w-32 border-2 border-red-700 rounded-md px-5 py-2 cursor-pointer hover:bg-red-800 transition disabled:text-gray-400 disabled:border-red-900 disabled:cursor-not-allowed ${selfResponse() === 0 ? 'disabled:bg-red-800 bg-red-800' : 'disabled:hover:bg-transparent'}`}
+						onClick={() => setEventStatus(props.event, 0)}
+						disabled={!enableVote() || selfResponse() === 0}
+					>
+						Não vou
+					</button>
+				</div>
+			</div>
+			<Show when={!enableVote()}>
+				<div class='flex place-content-center'>
+					<div class='border rounded-sm py-0 px-3 text-red-300 border-red-500 text-sm'>
+						Limite máximo de alterações antigido.
+					</div>
 				</div>
 			</Show>
-		</div>
+			<Show when={selfResponse() === 1 || selfResponse() === 2}>
+				<div class='flex mt-5 place-content-center'>
+					<button
+						class={`border-2 border-orange-300 rounded-md px-5 py-2 cursor-pointer hover:bg-orange-400 transition`}
+						onClick={() => openGoogleCalendarWindow()}
+					>
+						Adicionar ao Google Calendar
+					</button>
+				</div>
+			</Show>
+
+			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Participantes</h2>
+			<div class='flex place-content-center gap-5 flex-wrap'>
+				<div class='min-w-3/16'>
+					<div class='text-center text-lg font-semibold -mb-5 bg-green-700 rounded-md'>
+						Sim
+					</div>
+					<NameTable class='min-w-full' names={tableData()?.going!}/>
+				</div>
+				<div class='min-w-3/16'>
+					<div class='text-center text-lg font-semibold -mb-5 bg-yellow-600 rounded-md'>
+						Talvez
+					</div>
+					<NameTable class='min-w-full' names={tableData()?.maybe!}/>
+				</div>
+				<div class='min-w-3/16'>
+					<div class='text-center text-lg font-semibold -mb-5 bg-red-700 rounded-md'>
+						Não
+					</div>
+					<NameTable class='min-w-full' names={tableData()?.not_going!}/>
+				</div>
+				<div class='min-w-3/16 max-w-1/4 hidden md:block'>
+					<div class='text-center text-lg font-semibold -mb-5 bg-gray-500 rounded-md'>
+						Sem resposta
+					</div>
+					<NameTable class='min-w-full' names={tableData()?.noanswer!}/>
+				</div>
+			</div>
+		</Modal>
 	);
 };
 
@@ -723,9 +950,6 @@ const NextTable : Component<{ type: number }> = (props) => {
 	const [competitions, setCompetitions] = createSignal<CEvent[]>([]);
 	const [eventModal, setEventModal] = createSignal<boolean>(false);
 	const [selectedEvent, setSelectedEvent] = createSignal<CEvent>();
-	const [tableData, setTableData] = createSignal<CTableData>();
-	const [selfResponse, setSelfResponse] = createSignal<number>(-1);
-	const [enableVote, setEnableVote] = createSignal<boolean>(true);
 	const [isCollapsed, setIsCollapsed] = createSignal<boolean>(false);
 
 	// Fetch next competitions
@@ -761,76 +985,9 @@ const NextTable : Component<{ type: number }> = (props) => {
 		setCompetitions(events);
 	});
 
-	function eventTypeToName(type: number | undefined) {
-		if(type !== undefined) {
-			switch(type) {
-				case 0:  return 'Prova';
-				case 1:  return 'Estágio';
-				default: return 'Unknown';
-			}
-		}
-	}
-
 	function inspectEvent(event: CEvent) {
 		setSelectedEvent(event);
 		setEventModal(true);
-	}
-
-	async function updateTable(event: CEvent) {
-		const params = new URLSearchParams();
-		params.append('event', event.id.toString());
-		const data = await (await authFetch(`/api/attendance?${params}`)).json();
-
-		setTableData({
-			going: data.going.map((x: { full_name: string }) => { return x.full_name; }),
-			not_going: data.not_going.map((x: { full_name: string }) => { return x.full_name; }),
-			maybe: data.maybe.map((x: { full_name: string }) => { return x.full_name; }),
-			noanswer: data.noanswer.map((x: { full_name: string }) => { return x.full_name; })
-		});
-
-		setSelfResponse(data.self);
-	}
-
-	createEffect(async () => {
-		const event = selectedEvent();
-		if(event) {
-			updateTable(event);
-		}
-	});
-
-	async function checkSignLimit() {
-		const event = selectedEvent();
-		const params = new URLSearchParams();
-		params.append('id', (event?.id!).toString());
-		const res = await authFetch(`/api/sign_limit_reached?${params}`);
-		const data = await res.json();
-		setEnableVote(!data.status);
-	}
-
-	createEffect(() => {
-		if(selectedEvent()) {
-			checkSignLimit();
-		}
-	});
-
-	async function setEventStatus(event: CEvent, status: number) {
-		const res = await authFetch('/api/sign_evt', {
-			method: 'POST',
-			body: JSON.stringify({ event_id: event.id, status: status })
-		});
-
-		if(!res.ok) {
-			pushMessage('Erro ao atualizar estado.', 'error');
-		} else {
-			console.log('Updating event');
-
-			const data = await res.json();
-			if(data.limit_reached) {
-				setEnableVote(false);
-			}
-
-			updateTable(selectedEvent()!);
-		}
 	}
 
 	return (
@@ -885,132 +1042,11 @@ const NextTable : Component<{ type: number }> = (props) => {
 					</tbody>
 				</table>
 			</div>
-			<Modal open={eventModal()} onChange={(s: boolean) => { setEventModal(s); setSelectedEvent(!s ? undefined : selectedEvent()); }}>
-				<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Evento</h2>
-				<h2 class='text-white pb-1 text-lg font-semibold text-center'>Informações</h2>
-				<div class='flex items-center place-content-center flex-wrap'>
-					<div class='flex-grow'>
-						<div class='flex gap-5 items-center text-center my-5 px-5'>
-							<label class='block text-gray-200 text-md font-medium w-8 text-right'>Tipo</label>
-							<input
-								type='text'
-								value={eventTypeToName(selectedEvent()?.type!)}
-								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-								disabled
-							/>
-						</div>
-						<div class='flex gap-5 items-center text-center my-5 px-5'>
-							<label class='block text-gray-200 text-md font-medium w-8 text-right'>Nome</label>
-							<input
-								type='text'
-								value={selectedEvent()?.name}
-								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-								disabled
-							/>
-						</div>
-						<div class='flex gap-5 items-center text-center my-5 px-5'>
-							<label class='block text-gray-200 text-md font-medium w-8 text-right'>Local</label>
-							<input
-								type='text'
-								value={selectedEvent()?.location}
-								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-								disabled
-							/>
-						</div>
-					</div>
-					<div class='flex-grow'>
-						<div class='flex gap-5 items-center text-center my-5 px-5'>
-							<label class='block text-gray-200 text-md font-medium text-right w-1/8'>Início</label>
-							<input
-								type='text'
-								value={selectedEvent()?.start}
-								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-								disabled
-							/>
-						</div>
-						<div class='flex gap-5 items-center text-center my-5 px-5'>
-							<label class='block text-gray-200 text-md font-medium text-right w-1/8'>Fim</label>
-							<input
-								type='text'
-								value={selectedEvent()?.end}
-								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-								disabled
-							/>
-						</div>
-						<div class='flex gap-5 items-center text-center my-5 px-5'>
-							<label class='block text-gray-200 text-md font-medium text-right w-1/8'>Limite</label>
-							<input
-								type='text'
-								value={selectedEvent()?.sub_limit_date}
-								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-								disabled
-							/>
-						</div>
-					</div>
-				</div>
-
-				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Comparência</h2>
-				<div class='flex gap-5 my-5 px-5 items-center text-md font-bold place-content-center'>
-					<div class='flex gap-2 flex-wrap place-content-center'>
-						<button
-							class={`w-32 border-2 border-green-600 rounded-md px-5 py-2 cursor-pointer hover:bg-green-700 transition disabled:text-gray-400 disabled:border-green-800 disabled:cursor-not-allowed ${selfResponse() === 1 ? 'disabled:bg-green-700 bg-green-700' : 'disabled:hover:bg-transparent'}`}
-							onClick={() => setEventStatus(selectedEvent()!, 1)}
-							disabled={!enableVote() || selfResponse() === 1}
-						>
-							Vou
-						</button>
-						<button
-							class={`w-32 border-2 border-yellow-600 rounded-md px-5 py-2 cursor-pointer hover:bg-yellow-700 transition disabled:text-gray-400 disabled:border-yellow-800 disabled:cursor-not-allowed ${selfResponse() === 2 ? 'disabled:bg-yellow-700 bg-yellow-700' : 'disabled:hover:bg-transparent'}`}
-							onClick={() => setEventStatus(selectedEvent()!, 2)}
-							disabled={!enableVote() || selfResponse() === 2}
-						>
-							Talvez
-						</button>
-						<button
-							class={`w-32 border-2 border-red-700 rounded-md px-5 py-2 cursor-pointer hover:bg-red-800 transition disabled:text-gray-400 disabled:border-red-900 disabled:cursor-not-allowed ${selfResponse() === 0 ? 'disabled:bg-red-800 bg-red-800' : 'disabled:hover:bg-transparent'}`}
-							onClick={() => setEventStatus(selectedEvent()!, 0)}
-							disabled={!enableVote() || selfResponse() === 0}
-						>
-							Não vou
-						</button>
-					</div>
-				</div>
-				<Show when={!enableVote()}>
-					<div class='flex place-content-center'>
-						<div class='border rounded-sm py-0 px-3 text-red-300 border-red-500 text-sm'>
-							Limite máximo de alterações antigido.
-						</div>
-					</div>
-				</Show>
-
-				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Participantes</h2>
-				<div class='flex place-content-center gap-5 flex-wrap'>
-					<div class='min-w-3/16'>
-						<div class='text-center text-lg font-semibold -mb-5 bg-green-700 rounded-md'>
-							Sim
-						</div>
-						<NameTable class='min-w-full' names={tableData()?.going!}/>
-					</div>
-					<div class='min-w-3/16'>
-						<div class='text-center text-lg font-semibold -mb-5 bg-yellow-600 rounded-md'>
-							Talvez
-						</div>
-						<NameTable class='min-w-full' names={tableData()?.maybe!}/>
-					</div>
-					<div class='min-w-3/16'>
-						<div class='text-center text-lg font-semibold -mb-5 bg-red-700 rounded-md'>
-							Não
-						</div>
-						<NameTable class='min-w-full' names={tableData()?.not_going!}/>
-					</div>
-					<div class='min-w-3/16 max-w-1/4 hidden md:block'>
-						<div class='text-center text-lg font-semibold -mb-5 bg-gray-500 rounded-md'>
-							Sem resposta
-						</div>
-						<NameTable class='min-w-full' names={tableData()?.noanswer!}/>
-					</div>
-				</div>
-			</Modal>
+			<EventModalDisplay
+				open={eventModal()}
+				onChange={(s: boolean) => { setEventModal(s); setSelectedEvent(!s ? undefined : selectedEvent()); }}
+				event={selectedEvent()!}
+			/>
 		</>
 	);
 };
@@ -1440,7 +1476,7 @@ export const Activate : Component = () => {
 
 	return (
 		<div class='min-h-screen flex items-center justify-center bg-gray-900'>
-			<div class='w-full max-w-1/4 p-5 bg-gray-700 rounded-2xl overflow-x-auto'>
+			<div class='w-full max-w-md p-5 bg-gray-700 rounded-2xl overflow-x-auto'>
 				<div class='flex place-content-center'>
 					<img
 						src='/logo.svg'
@@ -1501,34 +1537,60 @@ export const Activate : Component = () => {
 	);
 };
 
+interface CEventMap {
+	[key: number]: CEvent;
+};
+
 export const Calendar : Component = () => {
 	let element!: HTMLDivElement;
+
+	const [event, setEvent] = createSignal<CEvent>();
+	const [eventMap, setEventMap] = createStore<CEventMap>({});
+
+	function buildEventFromCalendar(id: number) {
+		return eventMap[id];
+	}
 
 	onMount(async () => {
 		const res = await authFetch('/api/all_events');
 		const data = await res.json();
 
 		const events = new Array<EventInput>();
+		const limit_header = '[Limite resposta]';
 
 		for(const e of data) {
+			const end = new Date(e.end);
+			end.setDate(end.getDate() + 1);
 			events.push({
+				id: e.id,
 				title: e.name,
 				start: e.start,
-				end: e.end,
+				groupId: e.id,
+				end: end.toISOString(),
+				allDay: true,
 				backgroundColor: e.type == 0 ? '#3788d8' : '#806928',
 				borderColor: e.type == 0 ? '#3788d8' : '#806928'
 			});
 
+			setEventMap(e.id, {
+				id: e.id,
+				name: e.name,
+				start: e.start,
+				end: e.end,
+				location: e.location,
+				sub_limit_date: e.sub_limit_date,
+				type: e.type
+			});
+
 			events.push({
-				title: '[Limite resposta] ' + e.name,
+				title: limit_header + ' ' + e.name,
 				start: e.sub_limit_date,
 				end: e.sub_limit_date,
+				allDay: true,
 				backgroundColor: '#5b000b',
 				borderColor: '#5b000b'
 			});
 		}
-
-		console.log(events);
 
 		const calendar = new FCCalendar(element, {
 			plugins: [dayGridPlugin],
@@ -1538,12 +1600,19 @@ export const Calendar : Component = () => {
 				center: '',
 				right: 'title'
 			},
+			locale: ptLocale,
 			height: 'auto',
 			events: events,
 			// TODO: (César) Finish
-			eventClick: () => {  },
+			eventClick: (evt) => {
+				if(!evt.event.title.startsWith(limit_header)) {
+					setEvent(buildEventFromCalendar(Number(evt.event.id)));
+				}
+			},
 			eventDidMount: (evt) => {
-				evt.el.classList.add('cursor-pointer');
+				if(!evt.event.title.startsWith(limit_header)) {
+					evt.el.classList.add('cursor-pointer');
+				}
 			}
 		});
 
@@ -1556,6 +1625,11 @@ export const Calendar : Component = () => {
 			<div class='bg-gray-700 p-5 rounded-lg m-5'>
 				<div ref={element} class='text-white'>
 				</div>
+				<EventModalDisplay
+					open={event() !== undefined}
+					onChange={(s: boolean) => setEvent(!s ? undefined : event())}
+					event={event()!}
+				/>
 			</div>
 		</div>
 	);
