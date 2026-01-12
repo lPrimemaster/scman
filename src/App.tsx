@@ -7,6 +7,25 @@ import { EventInput, Calendar as FCCalendar } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import ptLocale from '@fullcalendar/core/locales/pt';
 
+// Capacitor
+import { PushNotifications } from '@capacitor/push-notifications';
+
+async function setupCapacitor() {
+	// TODO: (César)
+	console.log('Register token listener.');
+	PushNotifications.addListener('registration', token => console.log('Got token:', token.value));
+	PushNotifications.addListener('registrationError', error => console.error('Registration error:', error));
+
+	const result = await PushNotifications.requestPermissions();
+	if(result.receive === 'granted') {
+		PushNotifications.register();
+	}
+}
+
+function checkIsAndroid() {
+	return /Android/i.test(navigator.userAgent);
+}
+
 function getToken() {
 	return localStorage.getItem('token');
 }
@@ -1051,11 +1070,12 @@ const NextTable : Component<{ type: number }> = (props) => {
 	);
 };
 
-const LButton : Component<{ onClick?: (e: MouseEvent) => void, children?: JSXElement }> = (props) => {
+const LButton : Component<{ onClick?: (e: MouseEvent) => void, disabled?: boolean, children?: JSXElement }> = (props) => {
 	return (
 		<button
-			class='size-22 place-items-center rounded-md shadow-md bg-gray-600 hover:bg-gray-500 cursor-pointer hover:shadow-lg active:bg-gray-400 transition'
+			class='size-22 place-items-center rounded-md shadow-md bg-gray-600 hover:bg-gray-500 cursor-pointer hover:shadow-lg active:bg-gray-400 transition disabled:cursor-not-allowed disabled:bg-gray-800 disabled:shadow-none'
 			onClick={props.onClick}
+			disabled={props.disabled}
 		>
 			{props.children}
 		</button>
@@ -1228,6 +1248,52 @@ const Popup : Component<{ open: boolean, children?: JSXElement }> = (props) => {
 	);
 };
 
+const SearchBar : Component<{ filter: (value: string) => void }> = (props) => {
+	const [query, setQuery] = createSignal<string>('');
+
+	let inputRef!: HTMLInputElement;
+
+	function handleInputEvent(e: InputEvent) {
+		if(e.currentTarget) {
+			setQuery((e.currentTarget as HTMLInputElement).value);
+		}
+	}
+
+	function filterItems(value: string) {
+		props.filter(value);
+	}
+
+	onMount(() => inputRef.focus());
+
+	createEffect(() => filterItems(query()));
+
+	return (
+		<>
+			<div class="py-0">
+				<div class="flex flex-nowrap w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border border-gray-400">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="mx-2 size-6 shrink-0 opacity-50 flex-none"
+					>
+						<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+						<path d="M21 21l-6 -6" />
+					</svg>
+					<input
+						class="bg-transparent outline-none font-medium flex-grow" ref={inputRef}
+						type="text" placeholder='Pesquisar...' value={query()} onInput={handleInputEvent}
+					/>
+				</div>
+			</div>
+		</>
+	);
+};
+
 // BUG: (César) This can become a problem when we have many events
 const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [target, setTarget] = createSignal<CEvent>();
@@ -1276,14 +1342,26 @@ const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) =>
 		setEvents(events);
 	});
 
+	createEffect(() => setFilteredItems(events()));
+
+	const [filteredItems, setFilteredItems] = createSignal<Array<CEvent>>([]);
+	function filter(value: string) {
+		setFilteredItems(events().filter((x) =>
+			x.name.toLowerCase().includes(value.toLowerCase()) ||
+			x.location.toLowerCase().includes(value.toLowerCase())
+		));
+	}
+
 	return (
 		<Modal {...props}>
 			<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Apagar Evento</h2>
+			<div class='px-5 md:px-0'>
+				<SearchBar filter={filter}/>
+			</div>
 			<div class='flex place-content-center'>
 				<table class='min-w-full'>
 					<thead
 						class='bg-transparent/50 text-xs md:text-sm cursor-pointer hover:bg-gray-500'
-						// onClick={() => setIsCollapsed(!isCollapsed())}
 					>
 						<tr class='border-b text-gray-400'>
 							<th class='px-4 py-3 text-left font-semibold'>
@@ -1303,7 +1381,7 @@ const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) =>
 								</td>
 							</tr>
 						</Show>
-						<For each={events()}>{(event) => {
+						<For each={filteredItems()}>{(event) => {
 							return (
 								<tr 
 									class='hover:bg-gray-500 even:bg-gray-600 odd:bg-gray-700 cursor-pointer transition'
@@ -1355,7 +1433,7 @@ const EventManager : Component = () => {
 				<img src='/event_check.svg' class='size-10'/>
 				<div class='text-xs font-semibold pt-3'>Novo Evento</div>
 			</LButton>
-			<LButton>
+			<LButton disabled>
 				<div class='place-items-center'>
 					<img src='/event_edit.svg' class='size-12 ml-2 -mt-0.5'/>
 					<div class='text-xs font-semibold pt-3 -mt-1'>Editar Evento</div>
@@ -1374,6 +1452,9 @@ const EventManager : Component = () => {
 };
 
 export const App : Component = () => {
+	onMount(async () => {
+		await setupCapacitor();
+	});
 	return (
 		<>
 			<Navbar/>
