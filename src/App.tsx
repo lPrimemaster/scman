@@ -1109,6 +1109,7 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [limit, setLimit] = createSignal<string>('');
 	const [maxAlt, setMaxAlt] = createSignal<number>(5);
 	const [type, setType] = createSignal<string>('');
+	const [desc, setDesc] = createSignal<string>('');
 
 	function getValidateDateMin() {
 		return new Date().toISOString().split('T')[0];
@@ -1126,7 +1127,8 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 				end: end(),
 				limit: limit(),
 				maxalt: maxAlt(),
-				type: type() === 'Prova' ? 0 : 1
+				type: type() === 'Prova' ? 0 : 1,
+				description: desc()
 			})
 		});
 
@@ -1224,6 +1226,16 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 							<option value='Estágio'/>
 						</datalist>
 					</div>
+					<div>
+    					<label class='block text-gray-200 text-sm font-medium mb-1'>Descrição</label>
+						<input
+        					type='text'
+							value={desc()}
+							onInput={(e) => setDesc(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+        				/>
+    					</div>
 					<button
 						type='submit'
 						class='w-full bg-blue-600 text-gray-200 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer'
