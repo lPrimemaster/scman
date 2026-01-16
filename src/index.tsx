@@ -10,6 +10,7 @@ import {
 	Login,
 	PopoutMessageSpace,
 	Register,
+	ManageUsers,
 	Calendar,
 	Activate,
 	protect,
@@ -29,7 +30,8 @@ render(() => (
 		<Router>
 			{/* Admin only */}
 			<Route path='/admin' component={protectAdmin(AdminDashboard)}/>
-			<Route path='/register' component={protectAdmin(Register)}/>
+			<Route path='/admin/register' component={protectAdmin(Register)}/>
+			<Route path='/admin/manage' component={protectAdmin(ManageUsers)}/>
 
 			{/* Users only */}
 			<Route path='/' component={protect(App)}/>

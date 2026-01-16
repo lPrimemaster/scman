@@ -57,6 +57,16 @@ function requireAdmin(req, res, next) {
 	next();
 }
 
+function requireFed(req, res, next) {
+	if(
+		req.user.role !== 'admin' ||
+		req.user.role !== 'federado'
+	) {
+		return res.code(403).send();
+	}
+	next();
+}
+
 await app.register(cors, {
   origin: true
 });
@@ -65,7 +75,7 @@ db.exec(`
 create table if not exists users (
 	id integer primary key autoincrement,
 	passhash text,
-	role text not null default 'user',
+	role text not null,
 	active integer not null default 0,
 	full_name text not null,
 	username text unique not null
@@ -132,6 +142,25 @@ app.post('/api/register', { preHandler: [app.auth, requireAdmin] }, async (req, 
 	return {
 		inviteLink: `/activate?token=${token}`
 	};
+});
+
+app.post('/api/modify_user', { preHandler: [app.auth, requireAdmin] }, async (req, res) => {
+	const body = req.body;
+
+	if(!body || typeof body !== 'object' && body.id === undefined) {
+		return res.code(400).send({ error: 'Invalid request.' });
+	}
+
+	if(body.role !== undefined) {
+		try {
+			db.prepare('update users set role = ? where id = ?').run(body.role, body.id);
+		} catch(err) {
+			console.log(err);
+			return res.code(400).send({ error: 'SQL Error.' });
+		}
+	}
+
+	return { ok: true };
 });
 
 // Fetch account links
@@ -262,6 +291,21 @@ app.get('/api/all_events', { preHandler: app.auth }, (req, res) => {
 	}
 });
 
+// fetch all users
+app.get('/api/all_users', { preHandler: [app.auth, requireAdmin] }, (req, res) => {
+	if(!req.query) {
+		return res.code(400).send({ error: 'Invalid parameters.' });
+	}
+
+	try {
+		const users = db.prepare('select * from users').all();
+		return users;
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'SQL Error.' });
+	}
+});
+
 app.post('/api/erase_event', { preHandler: [app.auth, requireAdmin] }, (req, res) => {
 	const {
 		id
@@ -285,7 +329,7 @@ app.get('/api/upcoming', { preHandler: app.auth }, (req, res) => {
 	const count = Number(n);
 	const type = Number(t);
 
-	if(type != 0 && type != 1) {
+	if(req.user.role !== 'federado' && type != 0 && type != 1) {
 		return res.code(400).send({ error: 'Invalid parameters.' });
 	}
 
