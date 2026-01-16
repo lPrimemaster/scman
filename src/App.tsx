@@ -1,6 +1,6 @@
 import type { Component, JSXElement } from 'solid-js';
 import { Navigate, A, useNavigate } from '@solidjs/router';
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EventInput, Calendar as FCCalendar } from '@fullcalendar/core';
@@ -81,6 +81,57 @@ function convertDateLocale(value: string) {
 		day: '2-digit',
 	});
 }
+
+const Select : Component<{ options: Array<string>, class?: string, placeholder?: string, value?: string, onChange?: Function }> = (props) => {
+	const [open, setOpen] = createSignal<boolean>(false);
+	let root!: HTMLDivElement;
+	
+	function selected() {
+		return props.options.find((o) => o === props.value);
+	}
+
+	function outsideClick(e: MouseEvent) {
+		if(!root.contains(e.target as Node)) setOpen(false);
+	}
+
+	onMount(() => {
+		document.addEventListener('mousedown', outsideClick);
+		onCleanup(() => {
+			document.removeEventListener('mousedown', outsideClick);
+		});
+	});
+
+	return (
+		<div class={`min-w-48 ${props.class}`} ref={root}>
+			<button
+				type='button'
+				class='flex w-full items-center justify-between
+				rounded-lg border-gray-500 px-3 py-2 text-left text-gray-300 border'
+				onClick={() => setOpen((v) => !v)}
+			>
+				<span>{selected() ?? (props.placeholder ?? 'Selecionar...')}</span>
+				<span class='text-right ml-5'>▾</span>
+			</button>
+
+			<Show when={open() && props.options.length > 0}>
+				<ul class='absolute min-w-48 z-10 mt-1 rounded-lg border border-gray-300 shadow bg-gray-700 text-gray-300'>
+					<For each={props.options}>{(opt) =>
+						<li
+							class='cursor-pointer px-3 py-2 rounded-lg hover:bg-gray-500 active:bg-gray-400'
+							onMouseUp={(e) => {
+								e.preventDefault();
+								props.onChange?.(opt);
+								setOpen(false);
+							}}
+						>
+							{opt}
+						</li>
+					}</For>
+				</ul>
+			</Show>
+		</div>
+	);
+};
 
 const NavigateHome : Component = () => {
 	return <Navigate href='/'/>
@@ -456,18 +507,17 @@ export const Register : Component = () => {
 								</div>
 								<div>
 									<label class='block text-gray-200 text-sm font-medium mb-1'>Permissões</label>
-									<input
-										list='perm-list'
-										type='text'
+									<Select
+										class='min-w-32 w-full disabled:text-gray-400 disabled:cursor-not-allowed'
+										placeholder='Permissão...'
 										value={item.role}
-										onInput={(e) => setAccCreated(i(), 'role', e.currentTarget.value)}
-										class='min-w-32 w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed'
-										required
+										onChange={(v: string) => setAccCreated(i(), 'role', v)}
+										options={[
+											'federado',
+											'cpt',
+											'admin'
+										]}
 									/>
-									<datalist id='perm-list'>
-										<option value='user'/>
-										<option value='admin'/>
-									</datalist>
 								</div>
 								<button
 									type='submit'
@@ -588,6 +638,177 @@ ${(item.status == 'Conta Ativa') ?
 								</button>
 							</div>
 						</Modal>
+					</div>
+				</div>
+			</div>
+		</>
+	);
+};
+
+interface UserDetails {
+	name: string;
+	username: string;
+	role: string;
+	status: string;
+	id: number;
+};
+
+export const ManageUsers : Component = () => {
+	const [showEraseModal, setShowEraseModal] = createSignal<boolean>(false);
+	const [expanded, setExpanded] = createSignal<UserDetails>();
+	const [users, setUsers] = createSignal<Array<UserDetails>>([]);
+	const [filteredItems, setFilteredItems] = createSignal<Array<UserDetails>>([]);
+
+	onMount(async () => {
+		const res = await authFetch('/api/all_users');
+		const uarray = new Array<UserDetails>();
+		if(res.ok) {
+			const lusers = await res.json();
+			for(const u of lusers) {
+				uarray.push({
+					name: u.full_name,
+					username: u.username,
+					role: u.role,
+					status: (u.active == 1) ? 'Conta Activa' : ((u.active == 0) ? 'Conta Inactiva' : 'Conta Inválida'),
+					id: u.id
+				});
+			}
+
+			setUsers(uarray);
+		}
+	});
+
+	createEffect(() => setFilteredItems(users()));
+
+	function setUserRole(role: string, user: UserDetails) {
+		authFetch('/api/modify_user', {
+			method: 'POST',
+			body: JSON.stringify({
+				id: user.id,
+				role: role
+			})
+		}).then(() => {
+			window.location.reload();
+		});
+	}
+
+	function filter(value: string) {
+		setFilteredItems(users().filter((x) =>
+			x.name.toLowerCase().includes(value.toLowerCase()) ||
+			x.username.toLowerCase().includes(value.toLowerCase()) ||
+			x.role.toLowerCase().includes(value.toLowerCase()) ||
+			x.status.toLowerCase().includes(value.toLowerCase())
+		));
+	}
+
+	return (
+		<>
+			<Navbar/>
+			<div class='min-h-screen flex items-center justify-center bg-gray-900'>
+				<div class='w-full max-w-full lg:max-w-3/4 p-5 bg-gray-700 rounded-2xl'>
+					<h1 class='text-xl text-center font-medium text-gray-200 mb-5'>Gestão de Contas</h1>
+					<div class='px-5 md:px-0 text-white'>
+						<SearchBar filter={filter}/>
+					</div>
+					<div class='flex place-content-center mt-5'>
+						<table class='min-w-full'>
+							<thead
+								class='bg-transparent/50 text-xs md:text-sm cursor-pointer hover:bg-gray-500'
+							>
+								<tr class='border-b text-gray-400'>
+									<th class='px-4 py-3 text-left font-semibold'>
+										Nome
+									</th>
+									<th class='px-4 py-3 text-left font-semibold'>
+										Utilizador
+									</th>
+									<th class='px-4 py-3 text-left font-semibold'>
+										Grupo
+									</th>
+									<th class='px-4 py-3 text-left font-semibold'>
+										Status
+									</th>
+								</tr>
+							</thead>
+
+							<tbody class='divide-y divide-transparent'>
+								<Show when={users() !== undefined && users().length === 0}>
+									<tr>
+										<td colspan='99' class='text-center text-gray-500 py-1'>
+											Sem entradas
+										</td>
+									</tr>
+								</Show>
+								<For each={filteredItems()}>{(user) => {
+									const CMOD_DEF = 'px-4 py-1 text-left text-white text-xs md:text-sm';
+									const [cmod, setCmod] = createSignal<string>(CMOD_DEF);
+									const [cmodl, setCmodl] = createSignal<string>(CMOD_DEF);
+									const [cmodr, setCmodr] = createSignal<string>(CMOD_DEF);
+
+									createEffect(() => {
+										if(user === expanded()) {
+											setCmod(untrack(cmod) + ' border-t-2 border-gray-400');
+											setCmodr(untrack(cmod) + ' border-r-2 border-gray-400');
+											setCmodl(untrack(cmod) + ' border-l-2 border-gray-400');
+										} else {
+											setCmod(CMOD_DEF);
+											setCmodr(CMOD_DEF);
+											setCmodl(CMOD_DEF);
+										}
+									});
+
+									return (
+										<>
+											<tr 
+												class={
+													`${user === expanded() ? 'bg-blue-800' : 'even:bg-gray-600 odd:bg-gray-700'} hover:bg-gray-500 cursor-pointer transition`
+												}
+												onClick={() => setExpanded(user === expanded() ? undefined : user)}
+												// onClick={() => { setTarget(event); setOpenPopup(true); }}
+											>
+												<td class={cmodl()}>{user.name}</td>
+												<td class={cmod()}>{user.username}</td>
+												<td class={cmod()}>{user.role}</td>
+												<td class={cmodr()}>{user.status}</td>
+											</tr>
+
+											<Show when={expanded() !== undefined && user === expanded()}>
+												<tr 
+													class='transition h-32'
+												>
+													<td class='border-2 border-gray-400 rounded-xl px-4 py-1 text-left text-white text-xs md:text-sm' colspan='99'>
+														<div class='place-content-center flex gap-5'>
+															<div>
+																<label class='block text-gray-200 text-sm font-medium mb-1'>Grupo</label>
+																<Select
+																	value={user.role}
+																	options={[
+																		'federado',
+																		'cpt',
+																		'admin'
+																	]}
+																	onChange={(v: string) => setUserRole(v, user)}
+																/>
+															</div>
+															<div>
+																<button
+																	type='button'
+																	// onClick={() => { setShowEraseModal(false); }}
+																	class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
+																	disabled
+																>
+																	Apagar Conta
+																</button>
+															</div>
+														</div>
+													</td>
+												</tr>
+											</Show>
+										</>
+									);
+								}}</For>
+							</tbody>
+						</table>
 					</div>
 				</div>
 			</div>
@@ -1088,12 +1309,18 @@ const AccountManager : Component = () => {
 	return (
 		<div class='p-5 flex flex-wrap gap-5 place-content-center'>
 			<LButton
-				onClick={() => navigate('/register')}
+				onClick={() => navigate('/admin/register')}
 			>
 				<img src='/add.svg' class='size-10'/>
 				<div class='text-xs font-semibold pt-3'>Nova Conta</div>
 			</LButton>
-			<LButton>
+			<LButton
+				onClick={() => navigate('/admin/manage')}
+			>
+				<img src='/edit.svg' class='size-10'/>
+				<div class='text-xs font-semibold pt-3'>Editar Contas</div>
+			</LButton>
+			<LButton disabled>
 				<img src='/remove.svg' class='size-10'/>
 				<div class='text-xs font-semibold pt-3'>Apagar Conta</div>
 			</LButton>
