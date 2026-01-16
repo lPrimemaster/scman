@@ -97,7 +97,8 @@ create table if not exists events (
 	location text not null,
 	sub_limit_date text not null,
 	change_limit integer not null,
-	type integer not null
+	type integer not null,
+	description text
 );
 
 create table if not exists responses (
@@ -421,18 +422,20 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 		end,
 		limit,
 		maxalt,
-		type
+		type,
+		description
 	} = req.body;
 
 	try {
-		db.prepare('insert into events (name, start, end, location, sub_limit_date, change_limit, type) values (?, ?, ?, ?, ?, ?, ?)').run(
+		db.prepare('insert into events (name, start, end, location, sub_limit_date, change_limit, type, description) values (?, ?, ?, ?, ?, ?, ?, ?)').run(
 			name,
 			start,
 			end,
 			location,
 			limit,
 			maxalt,
-			type
+			type,
+			description
 		);
 
 		return { ok: true };
