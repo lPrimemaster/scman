@@ -1185,12 +1185,19 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 				</div>
 			</Show>
 			<Show when={selfResponse() === 1 || selfResponse() === 2}>
-				<div class='flex mt-5 place-content-center'>
+				<div class='flex flex-wrap mt-5 place-content-center gap-5'>
 					<button
 						class={`border-2 border-orange-300 rounded-md px-5 py-2 cursor-pointer hover:bg-orange-400 transition`}
 						onClick={() => openGoogleCalendarWindow()}
 					>
 						Adicionar ao Google Calendar
+					</button>
+					<button
+						class={`border-2 border-orange-300 rounded-md px-5 py-2 cursor-pointer hover:bg-orange-400 transition disabled:bg-orange-800 disabled:cursor-not-allowed disabled:text-gray-400`}
+						onClick={() => openGoogleCalendarWindow()}
+						disabled
+					>
+						Adicionar ao Outlook / Apple
 					</button>
 				</div>
 			</Show>
