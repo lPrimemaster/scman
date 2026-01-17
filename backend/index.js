@@ -283,7 +283,13 @@ app.get('/api/all_events', { preHandler: app.auth }, (req, res) => {
 	}
 
 	try {
-		const events = db.prepare('select * from events').all();
+		let extra_clause = '';
+
+		if(req.user.role == 'cpt') {
+			extra_clause = ' where type = 0 or type = 1';
+		}
+
+		const events = db.prepare('select * from events' + extra_clause).all();
 		return events;
 	} catch(err) {
 		console.log(err);
