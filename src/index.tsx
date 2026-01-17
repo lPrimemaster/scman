@@ -13,6 +13,7 @@ import {
 	ManageUsers,
 	Calendar,
 	Activate,
+	UserContextProvider,
 	protect,
 	protectAdmin
 } from './App';
@@ -26,7 +27,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 }
 
 render(() => (
-	<>
+	<UserContextProvider>
 		<Router>
 			{/* Admin only */}
 			<Route path='/admin' component={protectAdmin(AdminDashboard)}/>
@@ -42,5 +43,5 @@ render(() => (
 			<Route path='/activate' component={Activate}/>
 		</Router>
 		<PopoutMessageSpace/>
-	</>
+	</UserContextProvider>
 ), root!);

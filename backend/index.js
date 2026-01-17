@@ -329,7 +329,17 @@ app.get('/api/upcoming', { preHandler: app.auth }, (req, res) => {
 	const count = Number(n);
 	const type = Number(t);
 
-	if(req.user.role !== 'federado' && type != 0 && type != 1) {
+	// type
+	// 0 - Prova CPT
+	// 1 - Estágio/Evento Aberto
+	// 2 - Prova FED
+	// 3 - Estágio Fechado
+
+	if((req.user.role !== 'federado' && req.user.role !== 'admin') && type != 0 && type != 1) {
+		return res.code(400).send({ error: 'Invalid parameters.' });
+	}
+
+	if(type < 0 && type > 3) {
 		return res.code(400).send({ error: 'Invalid parameters.' });
 	}
 
@@ -357,11 +367,20 @@ app.post('/api/sign_evt', { preHandler: app.auth }, (req, res) => {
 	const { event_id, status } = req.body;
 
 	try {
+		// Block events 2 and 3 from CPT users
+		if(req.user.role === 'cpt') {
+			const { type } = db.prepare('select type from events where id = ?').get(event_id);
+			if(type === undefined) {
+				return res.code(400).send({ error: 'SQL Error.' });
+			} else if(type == 2 || type == 3) {
+				return res.code(400).send({ error: 'Insufficient permissions to sign the specified event.' });
+			}
+		}
+
 		let limit_reached = false;
 		const q1 = db.prepare('select count from responses where user_id = ? and event_id = ?').get(req.user.id, event_id);
 		const { change_limit } = db.prepare('select change_limit from events where id = ?').get(event_id);
 		if(q1 !== undefined && q1.count > change_limit) {
-			console.log(q1.count);
 			return res.code(400).send({ error: 'Cannot change signature. Limit reached.' });
 		} else if(q1 !== undefined && q1.count > (change_limit - 1)) {
 			limit_reached = true;
@@ -388,10 +407,20 @@ app.get('/api/attendance', { preHandler: app.auth }, (req, res) => {
 	const { event } = req.query;
 	const event_id = Number(event);
 	try {
+		const evres = db.prepare('select type from events where id = ?').get(event_id);
+		let response_clause = '';
+
+		if(evres.type > 1) {
+			response_clause = " and (u.role = 'federado' or u.role = 'admin')";
+			if(req.user.role !== 'admin' && req.user.role !== 'federado') {
+				return res.code(400).send({ error: 'No Permission.' });
+			}
+		}
+
 		const ng = db.prepare('select u.full_name from responses r join users u on u.id = r.user_id where r.event_id = ? and r.status = 0').all(event_id);
 		const go = db.prepare('select u.full_name from responses r join users u on u.id = r.user_id where r.event_id = ? and r.status = 1').all(event_id);
 		const mb = db.prepare('select u.full_name from responses r join users u on u.id = r.user_id where r.event_id = ? and r.status = 2').all(event_id);
-		const na = db.prepare('select u.full_name from users u left join responses r on u.id = r.user_id and r.event_id = ? where r.user_id is null').all(event_id);
+		const na = db.prepare('select u.full_name from users u left join responses r on u.id = r.user_id and r.event_id = ? where r.user_id is null' + response_clause).all(event_id);
 
 		const ustatus = db.prepare('select status from responses where user_id = ? and event_id = ?').get(req.user.id, event_id);
 		let self = -1; // No response yet

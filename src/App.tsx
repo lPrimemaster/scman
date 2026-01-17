@@ -1,18 +1,18 @@
-import type { Component, JSXElement } from 'solid-js';
+import type { Component, JSXElement, ParentComponent } from 'solid-js';
 import { Navigate, A, useNavigate } from '@solidjs/router';
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { createContext, createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EventInput, Calendar as FCCalendar } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import ptLocale from '@fullcalendar/core/locales/pt';
+import { jwtDecode } from 'jwt-decode';
 
 // Capacitor
 import { PushNotifications } from '@capacitor/push-notifications';
+import { Accessor } from 'solid-js/types/server/reactive.js';
 
 async function setupCapacitor() {
-	// TODO: (César)
-	console.log('Register token listener.');
 	PushNotifications.addListener('registration', token => console.log('Got token:', token.value));
 	PushNotifications.addListener('registrationError', error => console.error('Registration error:', error));
 
@@ -80,6 +80,38 @@ function convertDateLocale(value: string) {
 		month: 'short',
 		day: '2-digit',
 	});
+}
+
+interface TokenPayload {
+	id: number;
+	role: string;
+};
+
+interface UserContextData {
+	role?: Accessor<string>;
+};
+
+const UserContext = createContext<UserContextData>({});
+export const UserContextProvider : ParentComponent = (props) => {
+	const [role, setRole] = createSignal<string>('none');
+
+	onMount(() => {
+		const token = getToken();
+		if(token) {
+			const payload = jwtDecode<TokenPayload>(token);
+			setRole(payload.role);
+		}
+	});
+
+	return (
+		<UserContext.Provider value={{ role: role }}>
+			{props.children}
+		</UserContext.Provider>
+	);
+};
+
+function useUser() {
+	return useContext(UserContext);
 }
 
 const Select : Component<{ options: Array<string>, class?: string, placeholder?: string, value?: string, onChange?: Function }> = (props) => {
@@ -902,6 +934,7 @@ interface CEvent {
 	location: string;
 	sub_limit_date: string;
 	type: number;
+	description?: string;
 };
 
 const NameTable : Component<{ class?: string, names: Array<string> }> = (props) => {
@@ -964,8 +997,10 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 	function eventTypeToName(type: number | undefined) {
 		if(type !== undefined) {
 			switch(type) {
-				case 0:  return 'Prova';
-				case 1:  return 'Estágio';
+				case 0:  return 'Prova CPT';
+				case 1:  return 'Estágio Aberto';
+				case 2:  return 'Prova Federada';
+				case 3:  return 'Estágio Federado';
 				default: return 'Unknown';
 			}
 		}
@@ -1109,6 +1144,13 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 				</div>
 			</div>
 
+			<Show when={props.event.description}>
+				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Descrição</h2>
+				<p class='mx-5 text-justify'>
+					{props.event.description}
+				</p>
+			</Show>
+
 			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Comparência</h2>
 			<div class='flex gap-5 my-5 px-5 items-center text-md font-bold place-content-center'>
 				<div class='flex gap-2 flex-wrap place-content-center'>
@@ -1218,7 +1260,8 @@ const NextTable : Component<{ type: number }> = (props) => {
 				end: convertDateLocale(e.end),
 				sub_limit_date: convertDateLocale(e.sub_limit_date),
 				location: e.location,
-				type: e.type
+				type: e.type,
+				description: e.description
 			});
 		}
 
@@ -1338,6 +1381,17 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [type, setType] = createSignal<string>('');
 	const [desc, setDesc] = createSignal<string>('');
 
+	const typeToTypeid = createMemo(() => {
+		switch(type()) {
+			case 'Prova CPT': return 0;
+			case 'Estágio Aberto': return 1;
+
+			case 'Prova FED': return 2;
+			case 'Estágio': return 3;
+		}
+		return -1;
+	});
+
 	function getValidateDateMin() {
 		return new Date().toISOString().split('T')[0];
 	}
@@ -1354,7 +1408,7 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 				end: end(),
 				limit: limit(),
 				maxalt: maxAlt(),
-				type: type() === 'Prova' ? 0 : 1,
+				type: typeToTypeid(),
 				description: desc()
 			})
 		});
@@ -1440,26 +1494,24 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 					</div>
 					<div>
 						<label class='block text-gray-200 text-sm font-medium mb-1'>Tipo</label>
-						<input
-							list='type-list'
-							type='text'
+						<Select
+							class='w-full rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
 							value={type()}
-							onInput={(e) => setType(e.currentTarget.value)}
-							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
-							required
+							options={[
+								'Prova CPT',
+								'Prova FED',
+								'Estágio Aberto',
+								'Estágio'
+							]}
+							onChange={setType}
 						/>
-						<datalist id='type-list'>
-							<option value='Prova'/>
-							<option value='Estágio'/>
-						</datalist>
 					</div>
 					<div>
 						<label class='block text-gray-200 text-sm font-medium mb-1'>Descrição</label>
 						<textarea
 							value={desc()}
 							onInput={(e) => setDesc(e.currentTarget.value)}
-							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
-							required
+							class='w-full border md:min-h-48 border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
 						/>
 					</div>
 
@@ -1691,20 +1743,38 @@ const EventManager : Component = () => {
 };
 
 export const App : Component = () => {
+	const user = useUser();
+
 	onMount(async () => {
-		await setupCapacitor();
+		try {
+			await setupCapacitor();
+		} catch(err) {}
 	});
 	return (
 		<>
 			<Navbar/>
+			<Show when={user && user.role !== undefined && ((user.role() === 'federado') || (user.role() === 'admin'))}>
+				<Card class='my-5 mx-5 bg-gray-700 text-gray-100'>
+					<h1 class='font-bold text-md text-center'>Próximas provas federadas</h1>
+					<div>
+						<NextTable type={2}/>
+					</div>
+				</Card>
+				<Card class='my-5 mx-5 bg-gray-700 text-gray-100'>
+					<h1 class='font-bold text-md text-center'>Próximos estágios federados</h1>
+					<div>
+						<NextTable type={3}/>
+					</div>
+				</Card>
+			</Show>
 			<Card class='my-5 mx-5 bg-gray-700 text-gray-100'>
-				<h1 class='font-bold text-md text-center'>Próximas provas</h1>
+				<h1 class='font-bold text-md text-center'>Próximas provas CPT</h1>
 				<div>
 					<NextTable type={0}/>
 				</div>
 			</Card>
 			<Card class='my-5 mx-5 bg-gray-700 text-gray-100'>
-				<h1 class='font-bold text-md text-center'>Próximos estágios</h1>
+				<h1 class='font-bold text-md text-center'>Próximos estágios abertos</h1>
 				<div>
 					<NextTable type={1}/>
 				</div>
