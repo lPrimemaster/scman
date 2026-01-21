@@ -4,6 +4,8 @@ import cors from "@fastify/cors";
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import admin from 'firebase-admin';
+import fs from 'node:fs';
 
 const app = Fastify();
 
@@ -21,6 +23,84 @@ console.log('Setting environment:');
 console.log(`DB_PATH: ${DB_PATH}`);
 console.log(`SECRET_PROD: ${SECRET !== 'dev-secret'}`);
 console.log(`PORT: ${PORT}`);
+
+// Setup firebase
+admin.initializeApp({
+	credential: admin.credential.cert(JSON.parse(fs.readFileSync('serviceAccountKey.json')))
+});
+
+// Setup notifications from fcm
+async function sendNotification(user_id, { title, body, data }) {
+	const getUserTokens = db.prepare('select token from fcmtokens where user_id = ? and disabled = 0 order by last_seen desc');
+	const disableToken = db.prepare('update fcmtokens set disabled = 1 where token = ?');
+
+	const tokens = getUserTokens.all(user_id).map(r => r.token);
+
+	if(tokens.length === 0) {
+		return { ok: true, sent: 0 };
+	}
+
+	const chunks = [];
+	for(let i = 0; i < tokens.length; i += 500) chunks.push(tokens.slice(i, i + 500));
+
+	let sent = 0;
+	let failed = 0;
+
+	for(const chunk of chunks) {
+		const message = {
+			tokens: chunk,
+			notification: { title, body },
+			data: data ?? {}
+		};
+
+		const resp = await admin.messaging().sendEachForMulticast(message);
+
+		sent += resp.successCount;
+		failed += resp.failureCount;
+
+		// Disable failed tokens (expired)
+		resp.responses.forEach((r, i) => {
+			if(!r.success) {
+				const code = r.error?.code || '';
+				if(
+					code.includes('registration-token-not-registered') ||
+					code.includes('invalid-argument') ||
+					code.includes('unregistered')
+				) {
+					disableToken.run(chunk[i]);
+				}
+			}
+		});
+	}
+
+	return { ok: failed === 0, sent, failed };
+}
+
+async function sendNotificationToRole(role, { title, body, data }) {
+	const users = db.prepare('select id from users where role = ?').all(role);
+	for(const user of users) {
+		sendNotification(user.id, { title, body, data });
+	}
+}
+
+async function sendNotificationToAll({ title, body, data }) {
+	const users = db.prepare('select id from users').all();
+	for(const user of users) {
+		sendNotification(user.id, { title, body, data });
+	}
+}
+
+function cleanupStaleFCMTokens() {
+	const STALE_MS_TS = 1000 * 60 * 60 * 24 * 30; // 30 days
+	const cutoff = Date.now() - STALE_MS_TS;
+	const result = db.prepare('delete from fcmtokens where last_seen < ?').run(cutoff);
+
+	console.log(`[FCM] Cleanup: Removed ${result.changes} tokens.`);
+}
+
+// Cleanup fcm tokens every day and on restart
+cleanupStaleFCMTokens();
+setInterval(cleanupStaleFCMTokens, 1000 * 60 * 60 * 24);
 
 function signJWT(user) {
 	return jwt.sign(
@@ -109,6 +189,20 @@ create table if not exists responses (
 	updated_at timestamp not null,
 	primary key (user_id, event_id)
 );
+
+create table if not exists fcmtokens (
+	id integer primary key autoincrement,
+	user_id integer not null,
+	token text not null unique,
+	platform text,
+	created_at integer not null,
+	last_seen integer not null,
+	disabled integer not null default 0,
+	foreign key (user_id) references users(id)
+);
+
+create index if not exists idx_fcmtokens_user on fcmtokens(user_id);
+create index if not exists idx_fcmtokens_last_seen on fcmtokens(last_seen);
 `);
 
 /* ---------- API ---------- */
@@ -246,6 +340,13 @@ app.post('/api/activate', async (req, res) => {
 		console.log(err);
 		return { ok: false, error: 'Failed to update user database.' };
 	}
+
+	const { full_name } = db.prepare('select full_name from users where id = ?').get(invite.user_id);
+
+	sendNotificationToRole('admin', {
+		title: 'Novo utilizador registado.',
+		body: `${full_name}`
+	});
 
 	return { ok: true };
 });
@@ -395,6 +496,17 @@ app.post('/api/sign_evt', { preHandler: app.auth }, (req, res) => {
 			db.prepare(
 				'insert into responses (user_id, event_id, status, count, updated_at) values (?, ?, ?, 1, CURRENT_TIMESTAMP) on conflict do update set status = excluded.status, count = count + 1, updated_at = CURRENT_TIMESTAMP'
 			).run(req.user.id, event_id, status);
+
+			const { full_name } = db.prepare('select full_name from users where id = ?').get(req.user.id);
+			const { name } = db.prepare('select name from events where id = ?').get(event_id);
+
+			const status_name = (status === 0) ? 'Não vou' : ((status === 1) ? 'Vou' : 'Talvez');
+
+			sendNotificationToRole('admin', {
+				title: 'Nova inscrição',
+				body: `${full_name} alterou o seu estado no evento ${name} para "${status_name}"`
+			});
+
 			return { ok: true, limit_reached };
 		} catch(err) {
 			console.log(err);
@@ -473,6 +585,71 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 			description
 		);
 
+		// case 'Prova CPT': return 0;
+		// case 'Estágio Aberto': return 1;
+		//
+		// case 'Prova FED': return 2;
+		// case 'Estágio': return 3;
+
+		const message = {
+			title: 'Novo evento adicionado.',
+			body: name
+		};
+
+		// CPT
+		if(Number(type) < 2) {
+			sendNotificationToRole('cpt', message);
+		}
+
+		sendNotificationToRole('federado', message);
+		sendNotificationToRole('admin', message);
+
+		return { ok: true };
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'SQL Error.' });
+	}
+});
+
+app.post("/api/fcm/register", { preHandler: [app.auth] }, (req, res) => {
+	const upsert = db.prepare(`
+		insert into fcmtokens (user_id, token, platform, created_at, last_seen, disabled)
+		values (@user_id, @token, @platform, @now, @now, 0)
+		on conflict do update set
+			user_id=excluded.user_id,
+			platform=excluded.platform,
+			last_seen=excluded.last_seen,
+			disabled=0
+	`);
+
+	const {
+		token,
+		platform
+	} = req.body;
+
+	if(typeof token !== 'string' || token.length < 20) {
+		return res.status(400).send({ error: 'Invalid FCM token format.' });
+	}
+
+	try {
+		upsert.run({
+			user_id: req.user.id,
+			token: token,
+			platform: platform ?? null,
+			now: Date.now()
+		});
+		return { ok: true };
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'SQL Error.' });
+	}
+});
+
+app.post("/api/fcm/unregister", { preHandler: [app.auth] }, (req, res) => {
+	const disableToken = db.prepare('update fcmtokens set disabled = 1 where user_id = ? and token = ?');
+	const { token } = req.body;
+	try {
+		disableToken.run(req.user.id, token);
 		return { ok: true };
 	} catch(err) {
 		console.log(err);

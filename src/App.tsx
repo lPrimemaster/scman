@@ -1,6 +1,6 @@
 import type { Component, JSXElement, ParentComponent } from 'solid-js';
 import { Navigate, A, useNavigate } from '@solidjs/router';
-import { createContext, createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack, useContext } from 'solid-js';
+import { createContext, createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show, untrack, useContext, Accessor } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EventInput, Calendar as FCCalendar } from '@fullcalendar/core';
@@ -10,20 +10,96 @@ import { jwtDecode } from 'jwt-decode';
 
 // Capacitor
 import { PushNotifications } from '@capacitor/push-notifications';
-import { Accessor } from 'solid-js/types/server/reactive.js';
+import { Capacitor } from '@capacitor/core';
 
-async function setupCapacitor() {
-	PushNotifications.addListener('registration', token => console.log('Got token:', token.value));
-	PushNotifications.addListener('registrationError', error => console.error('Registration error:', error));
+const FCM_TOKEN_LS = 'fcm.local.token';
 
-	const result = await PushNotifications.requestPermissions();
-	if(result.receive === 'granted') {
-		PushNotifications.register();
+function checkIsNative() {
+	return Capacitor.isNativePlatform();
+}
+
+async function setupCapacitor() : Promise<string | null> {
+	if(checkIsNative()) {
+		let done = false;
+
+		const promise = new Promise<string | null>((resolve) => {
+			PushNotifications.addListener('registration', token => {
+				if(done) return;
+				done = true;
+				resolve(token.value);
+			});
+
+			PushNotifications.addListener('registrationError', error => {
+				if(done) return;
+				done = true;
+				resolve(null);
+			});
+		});
+
+		const result = await PushNotifications.requestPermissions();
+		if(result.receive === 'granted') {
+			await PushNotifications.register();
+			return await promise;
+		}
+
+		return null;
+	}
+
+	return null;
+}
+
+async function registerFCMToken(token: string) {
+	if(!token) return null;
+
+	const res = await authFetch('/api/fcm/register', {
+		method: 'POST',
+		body: JSON.stringify({
+			token,
+			platform: Capacitor.getPlatform()
+		})
+	});
+
+	if(res.ok && (await res.json()).ok) {
+		localStorage.setItem(FCM_TOKEN_LS, token);
 	}
 }
 
-function checkIsAndroid() {
-	return /Android/i.test(navigator.userAgent);
+async function unregisterFCMToken(token: string) {
+	if(!token) return null;
+
+	await authFetch('/api/fcm/unregister', {
+		method: 'POST',
+		body: JSON.stringify({
+			token
+		})
+	});
+}
+
+async function registerFCMTokenOnLogin(token: string) {
+	if(!checkIsNative()) return;
+	if(!(await checkToken())) return;
+
+	if(!token) return;
+
+	const previous = localStorage.getItem(FCM_TOKEN_LS);
+
+	if(previous !== token) {
+		await registerFCMToken(token);
+	}
+}
+
+async function unregisterFCMTokenOnLogout() {
+	if(!checkIsNative()) return;
+
+	const token = localStorage.getItem(FCM_TOKEN_LS);
+	if(!token) return;
+
+	try {
+		if(await checkToken()) await unregisterFCMToken(token);
+	} catch {
+	} finally {
+		localStorage.removeItem(FCM_TOKEN_LS);
+	}
 }
 
 function getToken() {
@@ -858,8 +934,10 @@ const Navbar : Component = () => {
 	});
 
 	function logOut() {
-		localStorage.removeItem('token');
-		navigate('/login');
+		unregisterFCMTokenOnLogout().then(() => {
+			localStorage.removeItem('token');
+			navigate('/login');
+		});
 	}
 
 	return (
@@ -1754,7 +1832,10 @@ export const App : Component = () => {
 
 	onMount(async () => {
 		try {
-			await setupCapacitor();
+			const token = await setupCapacitor();
+			if(token) {
+				await registerFCMTokenOnLogin(token);
+			}
 		} catch(err) {}
 	});
 	return (

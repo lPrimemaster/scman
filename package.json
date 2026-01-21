@@ -19,6 +19,7 @@
     "vite-plugin-solid": "^2.11.8"
   },
   "dependencies": {
+    "@capacitor-community/fcm": "^8.1.0",
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
