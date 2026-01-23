@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import admin from 'firebase-admin';
 import fs from 'node:fs';
+import cron from 'node-cron';
 
 const app = Fastify();
 
@@ -28,6 +29,73 @@ console.log(`PORT: ${PORT}`);
 admin.initializeApp({
 	credential: admin.credential.cert(JSON.parse(fs.readFileSync('serviceAccountKey.json')))
 });
+
+// ====================================================
+// SQL Schema setup
+// ====================================================
+db.exec(`
+create table if not exists users (
+	id integer primary key autoincrement,
+	passhash text,
+	role text not null,
+	active integer not null default 0,
+	full_name text not null,
+	username text unique not null
+);
+
+create table if not exists invites (
+	token text primary key,
+	user_id integer not null,
+	expires_at date not null,
+	used integer not null default 0,
+	foreign key (user_id) references users(id)
+);
+
+create table if not exists events (
+	id integer primary key autoincrement,
+	name text not null,
+	start text not null,
+	end text not null,
+	location text not null,
+	sub_limit_date text not null,
+	change_limit integer not null,
+	type integer not null,
+	description text
+);
+
+create table if not exists eventnotifies (
+	id integer not null,
+	notified integer not null default 1,
+	foreign key (id) references events(id)
+);
+
+create index if not exists idx_event_start on events(start);
+create unique index if not exists idx_eventnotifies_id on eventnotifies(id);
+
+create table if not exists responses (
+	user_id integer not null,
+	event_id integer not null,
+	status integer not null,
+	count integer not null,
+	updated_at timestamp not null,
+	primary key (user_id, event_id)
+);
+
+create table if not exists fcmtokens (
+	id integer primary key autoincrement,
+	user_id integer not null,
+	token text not null unique,
+	platform text,
+	created_at integer not null,
+	last_seen integer not null,
+	disabled integer not null default 0,
+	foreign key (user_id) references users(id)
+);
+
+create index if not exists idx_fcmtokens_user on fcmtokens(user_id);
+create index if not exists idx_fcmtokens_last_seen on fcmtokens(last_seen);
+`);
+// ====================================================
 
 // Setup notifications from fcm
 async function sendNotification(user_id, { title, body, data }) {
@@ -98,9 +166,115 @@ function cleanupStaleFCMTokens() {
 	console.log(`[FCM] Cleanup: Removed ${result.changes} tokens.`);
 }
 
-// Cleanup fcm tokens every day and on restart
+function notifyEvent1Day() {
+	// Check for upcoming events
+	const now = new Date();
+	now.setHours(0, 0, 0, 0);
+	const oneDayNotify = 86400000;
+
+	const uEvents = db.prepare(`
+		select r.event_id as eid, r.user_id as uid, e.name as name, e.start as start
+		from responses r
+		join events e on e.id = r.event_id
+		left join eventnotifies n on n.id = e.id
+		where 
+			n.id is null
+	`).all();
+
+	const events = uEvents.map((x) => {
+		const e_start = new Date(x.start);
+		const daysToGo = (e_start - now) / oneDayNotify;
+		return {
+			...x,
+			daysToGo
+		};
+	});
+
+	for(const eu_pair of events) {
+		if(eu_pair.daysToGo == 1) {
+			console.log(`[cron] Notifying user ${eu_pair.uid} for event ${eu_pair.name}.`);
+
+			sendNotification(eu_pair.uid, {
+				title: 'Falta 1 dia para um evento em que estás inscrito!',
+				body: `${eu_pair.name}`
+			});
+		}
+
+		if(eu_pair.daysToGo <= 1) {
+			// Insert this event into already notified table
+			db.prepare('insert or ignore into eventnotifies (id) values (?)').run(eu_pair.eid);
+		}
+	}
+}
+
+function notifyEvent1DayResponse() {
+	// Check for upcoming events
+	const now = new Date();
+	now.setHours(0, 0, 0, 0);
+	const oneDayNotify = 86400000;
+
+	const uEvents = db.prepare(`
+		select v.*, r.status, r.user_id, r.event_id
+		from (select e.id as eid, e.name, e.type as etype, e.sub_limit_date as sld, u.full_name, u.role, u.id as uid from events e left join users u) v
+		left join responses r
+			on r.user_id = uid
+			and r.event_id = eid
+		where r.user_id is null
+	`).all();
+
+	const events = uEvents.map((x) => {
+		const e_sublim = new Date(x.sld);
+		const daysToGo = (e_sublim - now) / oneDayNotify;
+		const notifyValid = !((x.etype > 1) && (x.role == 'cpt'));
+		return {
+			...x,
+			daysToGo,
+			notifyValid
+		};
+	}).filter((x) => x.notifyValid && (x.daysToGo >= 0)).map((x) => {
+		return {
+			ename: x.name,
+			uname: x.full_name,
+			uid: x.uid,
+			daysToGo: x.daysToGo
+		};
+	});
+
+	for(const eu_pair of events) {
+		if(eu_pair.daysToGo <= 7) {
+			console.log(`[cron] Notifying user ${eu_pair.uname} for event ${eu_pair.ename} response date limit.`);
+
+			let title = '';
+			if(eu_pair.daysToGo > 0) {
+				title = `Faltam ${eu_pair.daysToGo} dia(s) para o limite de inscrição do evento!`;
+			} else {
+				title = 'É hoje a data limite para inscrição do evento!';
+			}
+
+			sendNotification(eu_pair.uid, {
+				title,
+				body: `${eu_pair.ename}`
+			});
+		}
+	}
+}
+
+// ====================================================
+// CRON and on restart events
+// ====================================================
+
+// Cleanup fcm tokens every day at 12:00AM and on restart
 cleanupStaleFCMTokens();
-setInterval(cleanupStaleFCMTokens, 1000 * 60 * 60 * 24);
+cron.schedule('0 0 * * *', cleanupStaleFCMTokens, { timezone: 'UTC' });
+
+// Setup notifications event trigger every day at 10:00AM
+cron.schedule('0 10 * * *', notifyEvent1Day, { timezone: 'UTC' });
+
+// Setup notifications event sub date trigger every day at 10:00AM
+cron.schedule('0 10 * * *', notifyEvent1DayResponse, { timezone: 'UTC' });
+
+// ====================================================
+// ====================================================
 
 function signJWT(user) {
 	return jwt.sign(
@@ -150,60 +324,6 @@ function requireFed(req, res, next) {
 await app.register(cors, {
   origin: true
 });
-
-db.exec(`
-create table if not exists users (
-	id integer primary key autoincrement,
-	passhash text,
-	role text not null,
-	active integer not null default 0,
-	full_name text not null,
-	username text unique not null
-);
-
-create table if not exists invites (
-	token text primary key,
-	user_id integer not null,
-	expires_at date not null,
-	used integer not null default 0,
-	foreign key (user_id) references users(id)
-);
-
-create table if not exists events (
-	id integer primary key autoincrement,
-	name text not null,
-	start text not null,
-	end text not null,
-	location text not null,
-	sub_limit_date text not null,
-	change_limit integer not null,
-	type integer not null,
-	description text
-);
-
-create table if not exists responses (
-	user_id integer not null,
-	event_id integer not null,
-	status integer not null,
-	count integer not null,
-	updated_at timestamp not null,
-	primary key (user_id, event_id)
-);
-
-create table if not exists fcmtokens (
-	id integer primary key autoincrement,
-	user_id integer not null,
-	token text not null unique,
-	platform text,
-	created_at integer not null,
-	last_seen integer not null,
-	disabled integer not null default 0,
-	foreign key (user_id) references users(id)
-);
-
-create index if not exists idx_fcmtokens_user on fcmtokens(user_id);
-create index if not exists idx_fcmtokens_last_seen on fcmtokens(last_seen);
-`);
 
 /* ---------- API ---------- */
 
@@ -584,12 +704,6 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 			type,
 			description
 		);
-
-		// case 'Prova CPT': return 0;
-		// case 'Estágio Aberto': return 1;
-		//
-		// case 'Prova FED': return 2;
-		// case 'Estágio': return 3;
 
 		const message = {
 			title: 'Novo evento adicionado.',

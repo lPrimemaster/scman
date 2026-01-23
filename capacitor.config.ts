@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
 	appId: 'pt.sc1925.scman',
-	appName: 'scman',
+	appName: 'ScMan1925',
 	webDir: 'dist',
 
 	server: {

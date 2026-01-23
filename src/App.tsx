@@ -9,7 +9,7 @@ import ptLocale from '@fullcalendar/core/locales/pt';
 import { jwtDecode } from 'jwt-decode';
 
 // Capacitor
-import { PushNotifications } from '@capacitor/push-notifications';
+import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 
 const FCM_TOKEN_LS = 'fcm.local.token';
@@ -20,29 +20,9 @@ function checkIsNative() {
 
 async function setupCapacitor() : Promise<string | null> {
 	if(checkIsNative()) {
-		let done = false;
-
-		const promise = new Promise<string | null>((resolve) => {
-			PushNotifications.addListener('registration', token => {
-				if(done) return;
-				done = true;
-				resolve(token.value);
-			});
-
-			PushNotifications.addListener('registrationError', error => {
-				if(done) return;
-				done = true;
-				resolve(null);
-			});
-		});
-
-		const result = await PushNotifications.requestPermissions();
-		if(result.receive === 'granted') {
-			await PushNotifications.register();
-			return await promise;
-		}
-
-		return null;
+		// NOTE: (César) In theory this gets us the fcm device token for iOS also
+		await FirebaseMessaging.requestPermissions();
+		return (await FirebaseMessaging.getToken()).token;
 	}
 
 	return null;
@@ -98,6 +78,7 @@ async function unregisterFCMTokenOnLogout() {
 		if(await checkToken()) await unregisterFCMToken(token);
 	} catch {
 	} finally {
+		FirebaseMessaging.deleteToken();
 		localStorage.removeItem(FCM_TOKEN_LS);
 	}
 }

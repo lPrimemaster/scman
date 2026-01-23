@@ -1,7 +1,11 @@
 node_modules/
 yarn.lock
 dist/
+icons/
+
 android/
+ios/
+
 database.db
 
 backend/serviceAccountKey.json
