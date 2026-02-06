@@ -9,8 +9,8 @@ import ptLocale from '@fullcalendar/core/locales/pt';
 import { jwtDecode } from 'jwt-decode';
 
 // Capacitor
-import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
+import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 
 // Paypal
 import { loadScript } from '@paypal/paypal-js';
