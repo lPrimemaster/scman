@@ -9,3 +9,5 @@ ios/
 database.db
 
 backend/serviceAccountKey.json
+
+.env

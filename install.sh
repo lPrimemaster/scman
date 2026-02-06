@@ -19,4 +19,8 @@ cd ..
 
 chown -R www-data:www-data /srv/sc1925_backend
 
+# TODO: (César)
+# We should also setup the service via this install
+# This simplifies the process of making environment variables available
+
 echo Done!

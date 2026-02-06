@@ -12,6 +12,9 @@ import { jwtDecode } from 'jwt-decode';
 import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 import { Capacitor } from '@capacitor/core';
 
+// Paypal
+import { loadScript } from '@paypal/paypal-js';
+
 const FCM_TOKEN_LS = 'fcm.local.token';
 
 function checkIsNative() {
@@ -281,6 +284,81 @@ export function protectAdmin(Comp: Component) : Component {
 	};
 	return IAPComp;
 }
+
+const PaypalButtons : Component<{ event: CEvent, onSuccess: Function }> = (props) => {
+	let container!: HTMLDivElement;
+
+	onMount(async () => {
+		const paypal = await loadScript({
+			clientId: import.meta.env.VITE_PAYPAL_CLIENT_ID,
+			currency: 'EUR',
+			components: 'buttons'
+		});
+
+		if(!paypal) {
+			console.error('Failed to load paypal SDK.');
+			return;
+		}
+
+		if(!paypal.Buttons) {
+			console.error('Failed to load paypal buttons.');
+			return;
+		}
+
+		const buttons = paypal.Buttons({
+			createOrder: async () => {
+				const res = await authFetch('/api/paypal/order', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						event: props.event.id
+					})
+				});
+
+				const data = await res.json();
+				if(!res.ok) {
+					console.error('Failed to create order.');
+					return null;
+				}
+
+				return data.orderId;
+			},
+
+			onApprove: async (indata) => {
+				const res = await authFetch('/api/paypal/capture', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						orderId: indata.orderID
+					})
+				});
+
+				const data = await res.json();
+				if(!res.ok) {
+					console.error('Failed to capture order.');
+					console.error(data?.message);
+					return;
+				}
+
+				props.onSuccess();
+			},
+
+			onCancel: (indata) => {
+				console.log('Paypal canceled: ', indata);
+			},
+
+			onError: (err) => {
+				console.error('Paypal error: ', err);
+			}
+		});
+
+		buttons.render(container);
+	});
+
+	return (
+		<div ref={(el) => (container = el)}/>
+	);
+};
 
 const Card : Component<{ class?: string, children?: JSXElement }> = (props) => {
 	return (
@@ -993,6 +1071,7 @@ interface CEvent {
 	location: string;
 	sub_limit_date: string;
 	type: number;
+	price: string;
 	description?: string;
 };
 
@@ -1037,6 +1116,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 	const [selfResponse, setSelfResponse] = createSignal<number>(-1);
 	const [enableVote, setEnableVote] = createSignal<boolean>(true);
 	const [tableData, setTableData] = createSignal<CTableData>();
+	const [selfPayed, setSelfPayed] = createSignal<boolean>(false);
 
 	async function updateTable(event: CEvent) {
 		const params = new URLSearchParams();
@@ -1051,6 +1131,14 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		});
 
 		setSelfResponse(data.self);
+	}
+
+	async function updatePaymentStatus(event: CEvent) {
+		const params = new URLSearchParams();
+		params.append('event_id', event.id.toString());
+		const data = await (await authFetch(`/api/payment_status?${params}`)).json();
+		const payed = data.status === 'COMPLETED' || data.status === 'FREE';
+		setSelfPayed(payed);
 	}
 
 	function eventTypeToName(type: number | undefined) {
@@ -1134,7 +1222,12 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 	createEffect(on(() => props.event, () => {
 		if(props.event) {
 			updateTable(props.event);
+
+			// ====
+			// NOTE: (César) This order is mandatory!
 			checkSignLimit();
+			updatePaymentStatus(props.event);
+			// ====
 		}
 	}));
 
@@ -1144,15 +1237,6 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 			<h2 class='text-white pb-1 text-lg font-semibold text-center'>Informações</h2>
 			<div class='flex items-center place-content-center flex-wrap'>
 				<div class='flex-grow'>
-					<div class='flex gap-5 items-center text-center my-5 px-5'>
-						<label class='block text-gray-200 text-md font-medium w-8 text-right'>Tipo</label>
-						<input
-							type='text'
-							value={eventTypeToName(props.event.type)}
-							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
-							disabled
-						/>
-					</div>
 					<div class='flex gap-5 items-center text-center my-5 px-5'>
 						<label class='block text-gray-200 text-md font-medium w-8 text-right'>Nome</label>
 						<input
@@ -1167,6 +1251,15 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 						<input
 							type='text'
 							value={props.event.location}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
+							disabled
+						/>
+					</div>
+					<div class='flex gap-5 items-center text-center my-5 px-5'>
+						<label class='block text-gray-200 text-md font-medium w-8 text-right'>Custo</label>
+						<input
+							type='text'
+							value={props.event.price + '€'}
 							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-300'
 							disabled
 						/>
@@ -1216,30 +1309,37 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					<button
 						class={`w-32 border-2 border-green-600 rounded-md px-5 py-2 cursor-pointer hover:bg-green-700 transition disabled:text-gray-400 disabled:border-green-800 disabled:cursor-not-allowed ${selfResponse() === 1 ? 'disabled:bg-green-700 bg-green-700' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 1)}
-						disabled={!enableVote() || selfResponse() === 1}
+						disabled={!enableVote() || selfResponse() === 1 || selfPayed()}
 					>
 						Vou
 					</button>
 					<button
 						class={`w-32 border-2 border-yellow-600 rounded-md px-5 py-2 cursor-pointer hover:bg-yellow-700 transition disabled:text-gray-400 disabled:border-yellow-800 disabled:cursor-not-allowed ${selfResponse() === 2 ? 'disabled:bg-yellow-700 bg-yellow-700' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 2)}
-						disabled={!enableVote() || selfResponse() === 2}
+						disabled={!enableVote() || selfResponse() === 2 || selfPayed()}
 					>
 						Talvez
 					</button>
 					<button
 						class={`w-32 border-2 border-red-700 rounded-md px-5 py-2 cursor-pointer hover:bg-red-800 transition disabled:text-gray-400 disabled:border-red-900 disabled:cursor-not-allowed ${selfResponse() === 0 ? 'disabled:bg-red-800 bg-red-800' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 0)}
-						disabled={!enableVote() || selfResponse() === 0}
+						disabled={!enableVote() || selfResponse() === 0 || selfPayed()}
 					>
 						Não vou
 					</button>
 				</div>
 			</div>
-			<Show when={!enableVote()}>
+			<Show when={!enableVote() && !selfPayed()}>
 				<div class='flex place-content-center'>
 					<div class='border rounded-sm py-0 px-3 text-red-300 border-red-500 text-sm'>
 						Limite máximo de alterações antigido.
+					</div>
+				</div>
+			</Show>
+			<Show when={selfPayed()}>
+				<div class='flex place-content-center'>
+					<div class='border rounded-sm py-0 px-3 text-green-300 border-green-500 text-sm'>
+						Evento pago. Alteração indisponível.
 					</div>
 				</div>
 			</Show>
@@ -1258,6 +1358,13 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					>
 						Adicionar ao Outlook / Apple
 					</button>
+				</div>
+			</Show>
+
+			<Show when={selfResponse() === 1 && !selfPayed() && Number(props.event.price) !== 0}>
+				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Pagar</h2>
+				<div class='flex place-content-center'>
+					<PaypalButtons event={props.event} onSuccess={() => updatePaymentStatus(props.event)}/>
 				</div>
 			</Show>
 
@@ -1327,6 +1434,7 @@ const NextTable : Component<{ type: number }> = (props) => {
 				sub_limit_date: convertDateLocale(e.sub_limit_date),
 				location: e.location,
 				type: e.type,
+				price: e.price,
 				description: e.description
 			});
 		}
@@ -1445,6 +1553,7 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [limit, setLimit] = createSignal<string>('');
 	const [maxAlt, setMaxAlt] = createSignal<number>(5);
 	const [type, setType] = createSignal<string>('');
+	const [price, setPrice] = createSignal<string>('');
 	const [desc, setDesc] = createSignal<string>('');
 
 	const typeToTypeid = createMemo(() => {
@@ -1475,6 +1584,7 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 				limit: limit(),
 				maxalt: maxAlt(),
 				type: typeToTypeid(),
+				price: price(),
 				description: desc()
 			})
 		});
@@ -1570,6 +1680,20 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 								'Estágio'
 							]}
 							onChange={setType}
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Custo</label>
+						<input
+							type='text'
+							inputmode='decimal'
+							pattern='^\d+\.\d{2}'
+							onblur={(e) => e.currentTarget.value = Number(e.currentTarget.value).toFixed(2)}
+							placeholder='0.00'
+							value={price()}
+							onInput={(e) => setPrice(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
 						/>
 					</div>
 					<div>
@@ -1692,6 +1816,7 @@ const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) =>
 				end: convertDateLocale(e.end),
 				sub_limit_date: convertDateLocale(e.sub_limit_date),
 				location: e.location,
+				price: e.price,
 				type: e.type
 			});
 		}

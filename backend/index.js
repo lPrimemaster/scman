@@ -7,6 +7,7 @@ import { randomBytes } from 'crypto';
 import admin from 'firebase-admin';
 import fs from 'node:fs';
 import cron from 'node-cron';
+import 'dotenv/config';
 
 const app = Fastify();
 
@@ -20,15 +21,19 @@ const SECRET = process.env.JWT_SECRET || 'dev-secret';
 // Port
 const PORT = process.env.PORT || 4200;
 
+// Firebase
+admin.initializeApp({
+	credential: admin.credential.cert(JSON.parse(fs.readFileSync('serviceAccountKey.json')))
+});
+
+// Paypal
+const PAYPAL_BASE = process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+const PAYPAL_EXPIRE_DELTA = 5 * 60 * 1000;
+
 console.log('Setting environment:');
 console.log(`DB_PATH: ${DB_PATH}`);
 console.log(`SECRET_PROD: ${SECRET !== 'dev-secret'}`);
 console.log(`PORT: ${PORT}`);
-
-// Setup firebase
-admin.initializeApp({
-	credential: admin.credential.cert(JSON.parse(fs.readFileSync('serviceAccountKey.json')))
-});
 
 // ====================================================
 // SQL Schema setup
@@ -60,6 +65,7 @@ create table if not exists events (
 	sub_limit_date text not null,
 	change_limit integer not null,
 	type integer not null,
+	price text not null,
 	description text
 );
 
@@ -94,8 +100,50 @@ create table if not exists fcmtokens (
 
 create index if not exists idx_fcmtokens_user on fcmtokens(user_id);
 create index if not exists idx_fcmtokens_last_seen on fcmtokens(last_seen);
+
+create table if not exists payments (
+	id integer primary key autoincrement,
+	order_id text not null unique,
+	transaction_id text,
+	status text not null,
+	amount text not null,
+	payer text,
+	currency text not null default 'EUR',
+	description text,
+	event_id integer not null,
+	user_id integer not null,
+	created_at integer not null,
+	payed_at integer,
+	foreign key (event_id) references events(id),
+	foreign key (user_id) references users(id)
+);
+
+create index if not exists idx_payments_order on payments(order_id);
 `);
 // ====================================================
+
+// Setup Paypal
+async function getPaypalAccessToken() {
+	const auth = Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64');
+
+	const res = await fetch(`${PAYPAL_BASE}/v1/oauth2/token`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Basic ${auth}`,
+			'Content-Type': 'application/x-www-form-urlencoded'
+		},
+		body: 'grant_type=client_credentials'
+	});
+
+	if(!res.ok) {
+		const text = await res.text();
+		console.log(`Paypal access token error: [${res.status}] ${text}`);
+		return null;
+	}
+
+	const data = await res.json();
+	return data.access_token;
+}
 
 // Setup notifications from fcm
 async function sendNotification(user_id, { title, body, data }) {
@@ -259,6 +307,17 @@ function notifyEvent1DayResponse() {
 	}
 }
 
+function flagExpiredPayments() {
+	db.prepare(`
+		update payments
+		set
+			status = 'EXPIRED'
+		where
+			status = 'PENDING'
+			and created_at < ?
+	`).run(Date.now() - PAYPAL_EXPIRE_DELTA);
+}
+
 // ====================================================
 // CRON and on restart events
 // ====================================================
@@ -272,6 +331,10 @@ cron.schedule('0 10 * * *', notifyEvent1Day, { timezone: 'UTC' });
 
 // Setup notifications event sub date trigger every day at 10:00AM
 cron.schedule('0 10 * * *', notifyEvent1DayResponse, { timezone: 'UTC' });
+
+// Expire pending payments every hour and on restart
+flagExpiredPayments();
+cron.schedule('0 * * * *', flagExpiredPayments);
 
 // ====================================================
 // ====================================================
@@ -604,6 +667,12 @@ app.post('/api/sign_evt', { preHandler: app.auth }, (req, res) => {
 			}
 		}
 
+		// Block sign changes if event is already payed
+		const pstatus = db.prepare('select status from payments where event_id = ? and user_id = ?').get(event_id, req.user.id);
+		if(pstatus !== undefined && pstatus.status === 'COMPLETED') {
+			return res.code(400).send({ error: 'Cannot change signature. Event is already payed for.' });
+		}
+
 		let limit_reached = false;
 		const q1 = db.prepare('select count from responses where user_id = ? and event_id = ?').get(req.user.id, event_id);
 		const { change_limit } = db.prepare('select change_limit from events where id = ?').get(event_id);
@@ -690,11 +759,12 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 		limit,
 		maxalt,
 		type,
+		price,
 		description
 	} = req.body;
 
 	try {
-		db.prepare('insert into events (name, start, end, location, sub_limit_date, change_limit, type, description) values (?, ?, ?, ?, ?, ?, ?, ?)').run(
+		db.prepare('insert into events (name, start, end, location, sub_limit_date, change_limit, type, price, description) values (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
 			name,
 			start,
 			end,
@@ -702,6 +772,7 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 			limit,
 			maxalt,
 			type,
+			price,
 			description
 		);
 
@@ -769,6 +840,162 @@ app.post("/api/fcm/unregister", { preHandler: [app.auth] }, (req, res) => {
 		console.log(err);
 		return res.code(400).send({ error: 'SQL Error.' });
 	}
+});
+
+// Paypal endpoints
+app.post("/api/paypal/order", { preHandler: [app.auth] }, async (req, res) => {
+	try {
+		const { event } = req.body;
+
+		const ppToken = await getPaypalAccessToken();
+
+		const payment = db.prepare(`select * from payments where event_id = ? and user_id = ? and status = 'COMPLETED'`).get(event, req.user.id);
+		const { price } = db.prepare(`select price from events where id = ?`).get(event);
+
+		if(price === undefined) {
+			// Event does not exist
+			return res.code(400).send({ error: 'Invalid event.' });
+		} else if(Number(price) === 0) {
+			// Event is not payable
+			return res.code(400).send({ error: 'Event not payable.' });
+		}
+
+		if(payment && payment.status == 'COMPLETED') {
+			// User already paid
+			// cancel
+			return res.code(400).send({ error: 'Already paid.' });
+		}
+
+		const ammount = price;
+		const order = await fetch(`${PAYPAL_BASE}/v2/checkout/orders`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${ppToken}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				intent: 'CAPTURE',
+				purchase_units: [{
+					amount: {
+						currency_code: 'EUR',
+						value: ammount
+					}
+				}]
+			})
+		});
+
+		const data = await order.json();
+		if(!order.ok) {
+			return res.code(order.status).send(data);
+		}
+
+		// All is ok, create the payment entry
+		db.prepare(`
+			insert into payments (order_id, status, amount, created_at, description, event_id, user_id)
+			values (?, 'PENDING', ?, ?, 'User event payment.', ?, ?)
+		`).run(data.id, ammount, Date.now(), event, req.user.id);
+
+		return { orderId: data.id };
+	} catch (err) {
+		console.log(err);
+		return res.code(400).send({ error: 'SQL Error.' });
+	}
+});
+
+function extractPaypalCaptureInfo(data) {
+	return {
+		capId: data?.purchase_units?.[0]?.payments?.captures?.[0].id,
+		orderId: data.id,
+		payerId: data?.payer?.payer_id ?? null,
+		status: data.status
+	};
+}
+
+app.post("/api/paypal/capture", { preHandler: [app.auth] }, async (req, res) => {
+	const { orderId } = req.body;
+	if(!orderId) return res.code(400).send({ error: 'Missing order id.' });
+
+	const ppToken = await getPaypalAccessToken();
+
+	// Check if the order expired. If so refuse the capture
+	const { created_at, status, event_id } = db.prepare('select created_at, status, event_id from payments where order_id = ?').get(orderId);
+
+	if(status === 'EXPIRED' || created_at + PAYPAL_EXPIRE_DELTA < Date.now()) {
+		try {
+			db.prepare(`
+				update payments
+				set
+					status = ?,
+				where order_id = ?
+			`).run('EXPIRED', orderId);
+		} catch (err) {
+			console.log(err);
+			return res.code(400).send({ error: 'SQL Error.' });
+		}
+
+		return res.code(409).send({ error: 'Expired.' });
+	}
+
+	const capture = await fetch(`${PAYPAL_BASE}/v2/checkout/orders/${orderId}/capture`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${ppToken}`,
+			'Content-Type': 'application/json'
+		}
+	});
+
+	const data = await capture.json();
+	if(!capture.ok) {
+		return res.code(capture.status).send(data);
+	}
+
+	const ppInfo = extractPaypalCaptureInfo(data);
+	const payed_at = (ppInfo.status === 'COMPLETED') ? Date.now() : null;
+
+	try {
+		db.prepare(`
+			update payments
+			set
+				transaction_id = ?,
+				status = ?,
+				payer = ?,
+				payed_at = ?
+			where order_id = ?
+		`).run(ppInfo.capId, ppInfo.status, ppInfo.payerId, payed_at, ppInfo.orderId);
+	} catch (err) {
+		console.log(err);
+		return res.code(400).send({ error: 'SQL Error.' });
+	}
+
+	const { full_name } = db.prepare('select full_name from users where id = ?').get(req.user.id);
+	const { name } = db.prepare('select name from events where id = ?').get(event_id);
+
+	if(ppInfo.status === 'COMPLETED') {
+		sendNotificationToRole('admin', {
+			title: 'Pagamento efetuado.',
+			body: `${full_name} pagou o evento "${name}"`
+		});
+	}
+
+	return res.send(data);
+});
+
+app.get('/api/payment_status', { preHandler: [app.auth] }, async (req, res) => {
+	const event_id = req.query.event_id;
+	const user_id = req.user.id;
+
+	const payment = db.prepare(`
+		select * from payments where event_id = ? and user_id = ? and status = 'COMPLETED'
+	`).get(event_id, user_id);
+
+	const event = db.prepare(`
+		select price from events where id = ?
+	`).get(event_id);
+
+	if(payment && payment.status && event && event.price) {
+		return { status: Number(event.price) == 0 ? 'FREE' : payment.status };
+	}
+	return { status: 'UNPAID' };
 });
 
 app.listen({ port: PORT });
