@@ -1117,6 +1117,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 	const [enableVote, setEnableVote] = createSignal<boolean>(true);
 	const [tableData, setTableData] = createSignal<CTableData>();
 	const [selfPayed, setSelfPayed] = createSignal<boolean>(false);
+	const [expired, setExpired] = createSignal<boolean>(false);
 
 	async function updateTable(event: CEvent) {
 		const params = new URLSearchParams();
@@ -1219,15 +1220,28 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		);
 	}
 
+	function checkDateLimit() {
+		const [sd, sm, sy] = props.event.sub_limit_date.split('/').map(Number);
+		const date = new Date(sy, sm - 1, sd);
+		const MS_DAY = 86400000;
+		setExpired(date.getTime() + MS_DAY < Date.now());
+	}
+
+	createEffect(() => {
+		const status = enableVote();
+		console.log('enableVote: ', status);
+	});
+
 	createEffect(on(() => props.event, () => {
 		if(props.event) {
 			updateTable(props.event);
 
 			// ====
-			// NOTE: (César) This order is mandatory!
 			checkSignLimit();
 			updatePaymentStatus(props.event);
+			checkDateLimit();
 			// ====
+
 		}
 	}));
 
@@ -1309,7 +1323,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					<button
 						class={`w-32 border-2 border-green-600 rounded-md px-5 py-2 cursor-pointer hover:bg-green-700 transition disabled:text-gray-400 disabled:border-green-800 disabled:cursor-not-allowed ${selfResponse() === 1 ? 'disabled:bg-green-700 bg-green-700' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 1)}
-						disabled={!enableVote() || selfResponse() === 1 || selfPayed()}
+						disabled={!enableVote() || selfResponse() === 1 || selfPayed() || expired()}
 					>
 						Vou
 					</button>
@@ -1325,13 +1339,20 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					<button
 						class={`w-32 border-2 border-red-700 rounded-md px-5 py-2 cursor-pointer hover:bg-red-800 transition disabled:text-gray-400 disabled:border-red-900 disabled:cursor-not-allowed ${selfResponse() === 0 ? 'disabled:bg-red-800 bg-red-800' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 0)}
-						disabled={!enableVote() || selfResponse() === 0 || selfPayed()}
+						disabled={!enableVote() || selfResponse() === 0 || selfPayed() || expired()}
 					>
 						Não vou
 					</button>
 				</div>
 			</div>
-			<Show when={!enableVote() && !selfPayed()}>
+			<Show when={!selfPayed() && expired()}>
+				<div class='flex place-content-center'>
+					<div class='border rounded-sm py-0 px-3 text-red-300 border-red-500 text-sm'>
+						Data limite de resposta atingida.
+					</div>
+				</div>
+			</Show>
+			<Show when={!enableVote() && !selfPayed() && !expired()}>
 				<div class='flex place-content-center'>
 					<div class='border rounded-sm py-0 px-3 text-red-300 border-red-500 text-sm'>
 						Limite máximo de alterações antigido.
