@@ -355,8 +355,7 @@ function verifyJWT(token) {
 }
 
 function parseDateFormatToEpoch(date) {
-	const [d, m, y] = date.split('/').map(Number);
-	return (new Date(y, m-1, d)).getTime();
+	return (new Date(date)).getTime();
 }
 
 app.decorate('auth', async (req, res) => {
