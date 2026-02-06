@@ -1290,17 +1290,19 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		);
 	}
 
+	function swap(x: any, y: any) {
+		return [y, x];
+	}
+
 	function checkDateLimit() {
-		const [sd, sm, sy] = props.event.sub_limit_date.split('/').map(Number);
+		let [sd, sm, sy] = props.event.sub_limit_date.split(/[\/-]/).map(Number);
+		if(sd > sy) [sd, sy] = swap(sd, sy);
+
 		const date = new Date(sy, sm - 1, sd);
+		console.log(date);
 		const MS_DAY = 86400000;
 		setExpired(date.getTime() + MS_DAY < Date.now());
 	}
-
-	createEffect(() => {
-		const status = enableVote();
-		console.log('enableVote: ', status);
-	});
 
 	createEffect(on(() => props.event, () => {
 		if(props.event) {
@@ -2259,6 +2261,8 @@ export const Calendar : Component = () => {
 				end: e.end,
 				location: e.location,
 				sub_limit_date: e.sub_limit_date,
+				price: e.price,
+				description: e.description,
 				type: e.type
 			});
 
