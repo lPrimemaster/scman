@@ -1183,6 +1183,10 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		setEnableVote(!data.status);
 	}
 
+	function ptLocaleToISO(date: string) {
+		return date.split('/').reverse().join('/');
+	}
+
 	function computeGoogleCalendarLink() {
 
 		// BUG: (César) Locale is already set on the date internally
@@ -1205,6 +1209,68 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		});
 
 		return `https://calendar.google.com/calendar/render?${params.toString()}`;
+	}
+
+	function randomUUIDv4() {
+		// RFC 4122
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+			const r = Math.random() * 16 | 0;
+			const v = c === 'x' ? r : (r & 0x3 | 0x8);
+			return v.toString(16);
+		});
+	}
+
+	function computeICS() {
+		const pad = (x: Number) => String(x).padStart(2, '0');
+		const toICSDateUTC = (date: Date) => {
+			return (
+				date.getUTCFullYear().toString() +
+				pad(date.getUTCMonth() + 1) +
+				pad(date.getUTCDate()) + 'T' +
+				pad(date.getUTCHours()) +
+				pad(date.getUTCMinutes()) +
+				pad(date.getUTCSeconds()) + 'Z'
+			);
+		}
+		const escapeICSText = (x: string = '') => x.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/;/g, '\\;').replace(/,/g, '\\,');
+		const uid = `${randomUUIDv4()}@local`;
+		const now = new Date();
+
+		const template = [
+			'BEGIN:VCALENDAR',
+			'VERSION:2.0',
+			'PRODID:-//ICS Maker//EN',
+			'CALSCALE:GREGORIAN',
+			'METHOD:PUBLISH',
+			'BEGIN:VEVENT',
+			`UID:${uid}`,
+			`DTSTAMP:${toICSDateUTC(now)}`,
+			`CREATED:${toICSDateUTC(now)}`,
+			`LAST-MODIFIED:${toICSDateUTC(now)}`,
+			`SUMMARY:${escapeICSText(`[SC1925] ${props.event.name}`)}`,
+			`DTSTART:${toICSDateUTC(new Date(ptLocaleToISO(props.event.start)))}`,
+			`DTEND:${toICSDateUTC(new Date(ptLocaleToISO(props.event.end)))}`,
+			`LOCATION:${escapeICSText(props.event.location)}`,
+			`DESCRIPTION:${escapeICSText(eventTypeToName(props.event.type))}`,
+			'END:VEVENT',
+			'END:VCALENDAR'
+		];
+
+		return template.join('\r\n');
+	}
+
+	function downloadICS() {
+		const ics = computeICS();
+		const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `${props.event.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').slice(0, 80)}.ics`;
+		a.style.display = 'none';
+		a.click();
+		a.remove();
+		URL.revokeObjectURL(url);
 	}
 
 	function openGoogleCalendarWindow() {
@@ -1376,10 +1442,9 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					</button>
 					<button
 						class={`border-2 border-orange-300 rounded-md px-5 py-2 cursor-pointer hover:bg-orange-400 transition disabled:bg-orange-800 disabled:cursor-not-allowed disabled:text-gray-400`}
-						onClick={() => openGoogleCalendarWindow()}
-						disabled
+						onClick={() => downloadICS()}
 					>
-						Adicionar ao Outlook / Apple
+						Adicionar ao Outlook / Apple (.ics)
 					</button>
 				</div>
 			</Show>
