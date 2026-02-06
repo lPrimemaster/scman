@@ -354,6 +354,11 @@ function verifyJWT(token) {
 	return jwt.verify(token, SECRET);
 }
 
+function parseDateFormatToEpoch(date) {
+	const [d, m, y] = date.split('/').map(Number);
+	return (new Date(y, m-1, d)).getTime();
+}
+
 app.decorate('auth', async (req, res) => {
 	const h = req.headers.authorization;
 
@@ -675,8 +680,10 @@ app.post('/api/sign_evt', { preHandler: app.auth }, (req, res) => {
 
 		let limit_reached = false;
 		const q1 = db.prepare('select count from responses where user_id = ? and event_id = ?').get(req.user.id, event_id);
-		const { change_limit } = db.prepare('select change_limit from events where id = ?').get(event_id);
-		if(q1 !== undefined && q1.count > change_limit) {
+		const { change_limit, sub_limit_date } = db.prepare('select change_limit, sub_limit_date from events where id = ?').get(event_id);
+		const limit_date = parseDateFormatToEpoch(sub_limit_date);
+		const oneDayMs = 86400000;
+		if((q1 !== undefined && q1.count > change_limit) || limit_date + oneDayMs < Date.now()) {
 			return res.code(400).send({ error: 'Cannot change signature. Limit reached.' });
 		} else if(q1 !== undefined && q1.count > (change_limit - 1)) {
 			limit_reached = true;
