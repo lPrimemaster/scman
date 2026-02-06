@@ -1183,8 +1183,12 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		setEnableVote(!data.status);
 	}
 
-	function ptLocaleToISO(date: string) {
-		return date.split('/').reverse().join('/');
+	function ptLocaleToISO(date: string, nextDay: boolean = false) {
+		const dmy = date.split('/');
+		if(nextDay) {
+			dmy[0] = (Number(dmy[0]) + 1).toString().padStart(2, '0');
+		}
+		return dmy.reverse().join('/');
 	}
 
 	function computeGoogleCalendarLink() {
@@ -1249,7 +1253,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 			`LAST-MODIFIED:${toICSDateUTC(now)}`,
 			`SUMMARY:${escapeICSText(`[SC1925] ${props.event.name}`)}`,
 			`DTSTART:${toICSDateUTC(new Date(ptLocaleToISO(props.event.start)))}`,
-			`DTEND:${toICSDateUTC(new Date(ptLocaleToISO(props.event.end)))}`,
+			`DTEND:${toICSDateUTC(new Date(ptLocaleToISO(props.event.end, true)))}`,
 			`LOCATION:${escapeICSText(props.event.location)}`,
 			`DESCRIPTION:${escapeICSText(eventTypeToName(props.event.type))}`,
 			'END:VEVENT',
