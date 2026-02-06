@@ -1313,13 +1313,15 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					>
 						Vou
 					</button>
-					<button
-						class={`w-32 border-2 border-yellow-600 rounded-md px-5 py-2 cursor-pointer hover:bg-yellow-700 transition disabled:text-gray-400 disabled:border-yellow-800 disabled:cursor-not-allowed ${selfResponse() === 2 ? 'disabled:bg-yellow-700 bg-yellow-700' : 'disabled:hover:bg-transparent'}`}
-						onClick={() => setEventStatus(props.event, 2)}
-						disabled={!enableVote() || selfResponse() === 2 || selfPayed()}
-					>
-						Talvez
-					</button>
+					{
+					// <button
+					// 	class={`w-32 border-2 border-yellow-600 rounded-md px-5 py-2 cursor-pointer hover:bg-yellow-700 transition disabled:text-gray-400 disabled:border-yellow-800 disabled:cursor-not-allowed ${selfResponse() === 2 ? 'disabled:bg-yellow-700 bg-yellow-700' : 'disabled:hover:bg-transparent'}`}
+					// 	onClick={() => setEventStatus(props.event, 2)}
+					// 	disabled={!enableVote() || selfResponse() === 2 || selfPayed()}
+					// >
+					// 	Talvez
+					// </button>
+					}
 					<button
 						class={`w-32 border-2 border-red-700 rounded-md px-5 py-2 cursor-pointer hover:bg-red-800 transition disabled:text-gray-400 disabled:border-red-900 disabled:cursor-not-allowed ${selfResponse() === 0 ? 'disabled:bg-red-800 bg-red-800' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 0)}
@@ -1361,12 +1363,14 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 				</div>
 			</Show>
 
-			<Show when={selfResponse() === 1 && !selfPayed() && Number(props.event.price) !== 0}>
-				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Pagar</h2>
-				<div class='flex place-content-center'>
-					<PaypalButtons event={props.event} onSuccess={() => updatePaymentStatus(props.event)}/>
-				</div>
-			</Show>
+			{
+			// <Show when={selfResponse() === 1 && !selfPayed() && Number(props.event.price) !== 0}>
+			// 	<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Pagar</h2>
+			// 	<div class='flex place-content-center'>
+			// 		<PaypalButtons event={props.event} onSuccess={() => updatePaymentStatus(props.event)}/>
+			// 	</div>
+			// </Show>
+			}
 
 			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Participantes</h2>
 			<div class='flex place-content-center gap-5 flex-wrap'>
@@ -1376,12 +1380,14 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 					</div>
 					<NameTable class='min-w-full' names={tableData()?.going!}/>
 				</div>
-				<div class='min-w-3/16'>
-					<div class='text-center text-lg font-semibold -mb-5 bg-yellow-600 rounded-md'>
-						Talvez
-					</div>
-					<NameTable class='min-w-full' names={tableData()?.maybe!}/>
-				</div>
+				{
+				// <div class='min-w-3/16'>
+				// 	<div class='text-center text-lg font-semibold -mb-5 bg-yellow-600 rounded-md'>
+				// 		Talvez
+				// 	</div>
+				// 	<NameTable class='min-w-full' names={tableData()?.maybe!}/>
+				// </div>
+				}
 				<div class='min-w-3/16'>
 					<div class='text-center text-lg font-semibold -mb-5 bg-red-700 rounded-md'>
 						Não
