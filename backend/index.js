@@ -695,7 +695,7 @@ app.post('/api/sign_evt', { preHandler: app.auth }, (req, res) => {
 			const { full_name } = db.prepare('select full_name from users where id = ?').get(req.user.id);
 			const { name } = db.prepare('select name from events where id = ?').get(event_id);
 
-			const status_name = (status === 0) ? 'Não vou' : ((status === 1) ? 'Vou' : 'Talvez');
+			const status_name = (status === 0) ? 'Sem interesse' : ((status === 1) ? 'Interessado' : 'Talvez');
 
 			sendNotificationToRole('admin', {
 				title: 'Nova inscrição',
@@ -784,6 +784,58 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 
 		const message = {
 			title: 'Novo evento adicionado.',
+			body: name
+		};
+
+		// CPT
+		if(Number(type) < 2) {
+			sendNotificationToRole('cpt', message);
+		}
+
+		sendNotificationToRole('federado', message);
+		sendNotificationToRole('admin', message);
+
+		return { ok: true };
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'SQL Error.' });
+	}
+});
+
+app.post('/api/edit_event', { preHandler: [app.auth, requireAdmin] }, (req, res) => {
+	const {
+		id,
+		name,
+		location,
+		start,
+		end,
+		limit,
+		maxalt,
+		type,
+		price,
+		description
+	} = req.body;
+
+	try {
+		db.prepare(`
+			update events set
+			name = ?, start = ?, end = ?, location = ?, sub_limit_date = ?, change_limit = ?, type = ?, price = ?, description = ?
+			where id = ?
+		`).run(
+			name,
+			start,
+			end,
+			location,
+			limit,
+			maxalt,
+			type,
+			price,
+			description,
+			id
+		);
+
+		const message = {
+			title: 'Evento editado.',
 			body: name
 		};
 

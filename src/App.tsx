@@ -14,6 +14,7 @@ import { FirebaseMessaging } from '@capacitor-firebase/messaging';
 
 // Paypal
 import { loadScript } from '@paypal/paypal-js';
+import { createComponent } from 'solid-js/web/types/server.js';
 
 const FCM_TOKEN_LS = 'fcm.local.token';
 
@@ -1070,6 +1071,7 @@ interface CEvent {
 	end: string;
 	location: string;
 	sub_limit_date: string;
+	change_limit: number;
 	type: number;
 	price: string;
 	description?: string;
@@ -1163,8 +1165,6 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		if(!res.ok) {
 			pushMessage('Erro ao atualizar estado.', 'error');
 		} else {
-			console.log('Updating event');
-
 			const data = await res.json();
 			if(data.limit_reached) {
 				setEnableVote(false);
@@ -1299,7 +1299,6 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		if(sd > sy) [sd, sy] = swap(sd, sy);
 
 		const date = new Date(sy, sm - 1, sd);
-		console.log(date);
 		const MS_DAY = 86400000;
 		setExpired(date.getTime() + MS_DAY < Date.now());
 	}
@@ -1389,7 +1388,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 				</p>
 			</Show>
 
-			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Comparência</h2>
+			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Disponibilidade</h2>
 			<div class='flex gap-5 my-5 px-5 items-center text-md font-bold place-content-center'>
 				<div class='flex gap-2 flex-wrap place-content-center'>
 					<button
@@ -1397,23 +1396,14 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 						onClick={() => setEventStatus(props.event, 1)}
 						disabled={!enableVote() || selfResponse() === 1 || selfPayed() || expired()}
 					>
-						Vou
+						Disponível
 					</button>
-					{
-					// <button
-					// 	class={`w-32 border-2 border-yellow-600 rounded-md px-5 py-2 cursor-pointer hover:bg-yellow-700 transition disabled:text-gray-400 disabled:border-yellow-800 disabled:cursor-not-allowed ${selfResponse() === 2 ? 'disabled:bg-yellow-700 bg-yellow-700' : 'disabled:hover:bg-transparent'}`}
-					// 	onClick={() => setEventStatus(props.event, 2)}
-					// 	disabled={!enableVote() || selfResponse() === 2 || selfPayed()}
-					// >
-					// 	Talvez
-					// </button>
-					}
 					<button
 						class={`w-32 border-2 border-red-700 rounded-md px-5 py-2 cursor-pointer hover:bg-red-800 transition disabled:text-gray-400 disabled:border-red-900 disabled:cursor-not-allowed ${selfResponse() === 0 ? 'disabled:bg-red-800 bg-red-800' : 'disabled:hover:bg-transparent'}`}
 						onClick={() => setEventStatus(props.event, 0)}
 						disabled={!enableVote() || selfResponse() === 0 || selfPayed() || expired()}
 					>
-						Não vou
+						Indisponível
 					</button>
 				</div>
 			</div>
@@ -1468,7 +1458,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 			<div class='flex place-content-center gap-5 flex-wrap'>
 				<div class='min-w-3/16'>
 					<div class='text-center text-lg font-semibold -mb-5 bg-green-700 rounded-md'>
-						Sim
+						Disponível
 					</div>
 					<NameTable class='min-w-full' names={tableData()?.going!}/>
 				</div>
@@ -1482,7 +1472,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 				}
 				<div class='min-w-3/16'>
 					<div class='text-center text-lg font-semibold -mb-5 bg-red-700 rounded-md'>
-						Não
+						Indisponível
 					</div>
 					<NameTable class='min-w-full' names={tableData()?.not_going!}/>
 				</div>
@@ -1530,6 +1520,7 @@ const NextTable : Component<{ type: number }> = (props) => {
 				start: convertDateLocale(e.start),
 				end: convertDateLocale(e.end),
 				sub_limit_date: convertDateLocale(e.sub_limit_date),
+				change_limit: e.change_limit,
 				location: e.location,
 				type: e.type,
 				price: e.price,
@@ -1815,6 +1806,213 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	);
 };
 
+const EditEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
+	const [id, setId] = createSignal<number>();
+	const [name, setName] = createSignal<string>('');
+	const [location, setLocation] = createSignal<string>('');
+	const [start, setStart] = createSignal<string>('');
+	const [end, setEnd] = createSignal<string>('');
+	const [limit, setLimit] = createSignal<string>('');
+	const [maxAlt, setMaxAlt] = createSignal<number>(5);
+	const [type, setType] = createSignal<string>('');
+	const [price, setPrice] = createSignal<string>('');
+	const [desc, setDesc] = createSignal<string>('');
+	const [event, setEvent] = createSignal<CEvent | undefined>(undefined);
+
+	function typeidToType(tid: number) {
+		switch(tid) {
+			case 0: return 'Prova CPT';
+			case 1: return 'Estágio Aberto';
+			case 2: return 'Prova FED';
+			case 3: return 'Estágio';
+		}
+		return 'Unknown';
+	}
+
+	function convertDate(date: string) {
+		return date.split('/').reverse().join('-');
+	}
+
+	createEffect(() => {
+		const evt = event();
+
+		if(evt !== undefined) {
+			setId(evt.id);
+			setName(evt.name);
+			setLocation(evt.location);
+			setStart(convertDate(evt.start));
+			setEnd(convertDate(evt.end));
+			setLimit(convertDate(evt.sub_limit_date));
+			setMaxAlt(evt.change_limit);
+			setType(typeidToType(evt.type));
+			setPrice(Number(evt.price).toFixed(2).toString());
+			evt.description !== undefined && setDesc(evt.description);
+		}
+	});
+
+	const typeToTypeid = createMemo(() => {
+		switch(type()) {
+			case 'Prova CPT': return 0;
+			case 'Estágio Aberto': return 1;
+
+			case 'Prova FED': return 2;
+			case 'Estágio': return 3;
+		}
+		return -1;
+	});
+
+	function getValidateDateMin() {
+		return new Date().toISOString().split('T')[0];
+	}
+
+	async function submitEvent(e: Event) {
+		e.preventDefault();
+
+		const res = await authFetch('/api/edit_event', {
+			method: 'POST',
+			body: JSON.stringify({
+				id: id(),
+				name: name(),
+				location: location(),
+				start: start(),
+				end: end(),
+				limit: limit(),
+				maxalt: maxAlt(),
+				type: typeToTypeid(),
+				price: price(),
+				description: desc()
+			})
+		});
+
+		if(!res.ok) {
+			pushMessage('Falha ao editar evento.', 'error');
+		} else {
+			props.onChange(false);
+			pushMessage('Evento editado.', 'info');
+		}
+	}
+
+	return (
+		<Modal open={props.open} onChange={(s: boolean) => { setEvent(undefined); props.onChange(s); }}>
+			<EventSelector open={event() === undefined} onChange={props.onChange} onSelect={setEvent}/>
+			<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Editar Evento</h2>
+			<div class='flex place-content-center'>
+				<form onSubmit={submitEvent} class='lg:w-3/4 space-y-4'>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Nome</label>
+						<input
+							type='text'
+							value={name()}
+							onInput={(e) => setName(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Local</label>
+						<input
+							type='text'
+							value={location()}
+							onInput={(e) => setLocation(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Início</label>
+						<input
+							type='date'
+							value={start()}
+							min={getValidateDateMin()}
+							onInput={(e) => setStart(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Fim</label>
+						<input
+							type='date'
+							value={end()}
+							min={start() !== '' ? start() : getValidateDateMin()}
+							onInput={(e) => setEnd(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Limite de inscrição</label>
+						<input
+							type='date'
+							value={limit()}
+							min={event() && convertDate(event()!.sub_limit_date)}
+							max={start()}
+							onInput={(e) => setLimit(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Máximo de alterações</label>
+						<input
+							type='number'
+							value={maxAlt()}
+							min={0}
+							max={100}
+							onInput={(e) => setMaxAlt(Number(e.currentTarget.value))}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Tipo</label>
+						<Select
+							class='w-full rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							value={type()}
+							options={[
+								'Prova CPT',
+								'Prova FED',
+								'Estágio Aberto',
+								'Estágio'
+							]}
+							onChange={setType}
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Custo</label>
+						<input
+							type='text'
+							inputmode='decimal'
+							pattern='^\d+\.\d{2}'
+							onblur={(e) => e.currentTarget.value = Number(e.currentTarget.value).toFixed(2)}
+							placeholder='0.00'
+							value={price()}
+							onInput={(e) => setPrice(e.currentTarget.value)}
+							class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+							required
+						/>
+					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Descrição</label>
+						<textarea
+							value={desc()}
+							onInput={(e) => setDesc(e.currentTarget.value)}
+							class='w-full border md:min-h-48 border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+						/>
+					</div>
+
+					<button
+						type='submit'
+						class='w-full bg-blue-600 text-gray-200 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer'
+					>
+						Editar
+					</button>
+				</form>
+			</div>
+		</Modal>
+	);
+};
+
 const Popup : Component<{ open: boolean, children?: JSXElement }> = (props) => {
 	return (
 		<Show when={props.open}>
@@ -1873,6 +2071,96 @@ const SearchBar : Component<{ filter: (value: string) => void }> = (props) => {
 	);
 };
 
+const EventSelector : Component<{ open: boolean, onChange: Function, onSelect?: Function }> = (props) => {
+	const [events, setEvents] = createSignal<CEvent[]>([]);
+
+	async function selectEvent(event: CEvent) {
+		if(props.onSelect) {
+			props.onSelect(event);
+		}
+	}
+
+	onMount(async () => {
+		const res = await authFetch('/api/all_events');
+		let data = await res.json();
+
+		const events = new Array<CEvent>();
+
+		for(const e of data) {
+			events.push({
+				id: e.id,
+				name: e.name,
+				start: convertDateLocale(e.start),
+				end: convertDateLocale(e.end),
+				sub_limit_date: convertDateLocale(e.sub_limit_date),
+				change_limit: e.change_limit,
+				location: e.location,
+				price: e.price,
+				type: e.type,
+				description: e.description
+			});
+		}
+
+		setEvents(events);
+	});
+
+	createEffect(() => setFilteredItems(events()));
+
+	const [filteredItems, setFilteredItems] = createSignal<Array<CEvent>>([]);
+	function filter(value: string) {
+		setFilteredItems(events().filter((x) =>
+			x.name.toLowerCase().includes(value.toLowerCase()) ||
+			x.location.toLowerCase().includes(value.toLowerCase())
+		));
+	}
+
+	return (
+		<Modal {...props}>
+			<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Evento</h2>
+			<div class='px-5 md:px-0'>
+				<SearchBar filter={filter}/>
+			</div>
+			<div class='flex place-content-center'>
+				<table class='min-w-full'>
+					<thead
+						class='bg-transparent/50 text-xs md:text-sm cursor-pointer hover:bg-gray-500'
+					>
+						<tr class='border-b text-gray-400'>
+							<th class='px-4 py-3 text-left font-semibold'>
+								Nome
+							</th>
+							<th class='px-4 py-3 text-left font-semibold'>
+								Local
+							</th>
+						</tr>
+					</thead>
+
+					<tbody class='divide-y divide-transparent'>
+						<Show when={events() !== undefined && events().length === 0}>
+							<tr>
+								<td colspan='99' class='text-center text-gray-500 py-1'>
+									Sem entradas
+								</td>
+							</tr>
+						</Show>
+						<For each={filteredItems()}>{(event) => {
+							return (
+								<tr 
+									class='hover:bg-gray-500 even:bg-gray-600 odd:bg-gray-700 cursor-pointer transition'
+									onClick={() => { selectEvent(event); }}
+								>
+									<td class='px-4 py-1 text-left text-white text-xs md:text-sm'>{event.name}</td>
+									<td class='px-4 py-1 text-left text-white text-xs md:text-sm'>{event.location}</td>
+								</tr>
+							);
+						}}</For>
+					</tbody>
+				</table>
+			</div>
+		</Modal>
+	);
+};
+
 // BUG: (César) This can become a problem when we have many events
 const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [target, setTarget] = createSignal<CEvent>();
@@ -1913,6 +2201,7 @@ const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) =>
 				start: convertDateLocale(e.start),
 				end: convertDateLocale(e.end),
 				sub_limit_date: convertDateLocale(e.sub_limit_date),
+				change_limit: e.change_limit,
 				location: e.location,
 				price: e.price,
 				type: e.type
@@ -2003,6 +2292,7 @@ const EraseEvent : Component<{ open: boolean, onChange: Function }> = (props) =>
 
 const EventManager : Component = () => {
 	const [openNew, setOpenNew] = createSignal<boolean>(false);
+	const [openEdit, setOpenEdit] = createSignal<boolean>(false);
 	const [openErase, setOpenErase] = createSignal<boolean>(false);
 
 	return (
@@ -2013,7 +2303,9 @@ const EventManager : Component = () => {
 				<img src='/event_check.svg' class='size-10'/>
 				<div class='text-xs font-semibold pt-3'>Novo Evento</div>
 			</LButton>
-			<LButton disabled>
+			<LButton
+				onClick={() => setOpenEdit(true)}
+			>
 				<div class='place-items-center'>
 					<img src='/event_edit.svg' class='size-12 ml-2 -mt-0.5'/>
 					<div class='text-xs font-semibold pt-3 -mt-1'>Editar Evento</div>
@@ -2026,6 +2318,7 @@ const EventManager : Component = () => {
 				<div class='text-xs font-semibold pt-3'>Apagar Evento</div>
 			</LButton>
 		<NewEvent open={openNew()} onChange={setOpenNew}/>
+		<EditEvent open={openEdit()} onChange={setOpenEdit}/>
 		<EraseEvent open={openErase()} onChange={setOpenErase}/>
 		</div>
 	);
