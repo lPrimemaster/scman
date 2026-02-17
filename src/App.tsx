@@ -2073,6 +2073,7 @@ const SearchBar : Component<{ filter: (value: string) => void }> = (props) => {
 
 const EventSelector : Component<{ open: boolean, onChange: Function, onSelect?: Function }> = (props) => {
 	const [events, setEvents] = createSignal<CEvent[]>([]);
+	const [futureOnly, setFutureOnly] = createSignal<boolean>(true);
 
 	async function selectEvent(event: CEvent) {
 		if(props.onSelect) {
@@ -2084,10 +2085,10 @@ const EventSelector : Component<{ open: boolean, onChange: Function, onSelect?: 
 		const res = await authFetch('/api/all_events');
 		let data = await res.json();
 
-		const events = new Array<CEvent>();
+		const aevents = new Array<CEvent>();
 
 		for(const e of data) {
-			events.push({
+			aevents.push({
 				id: e.id,
 				name: e.name,
 				start: convertDateLocale(e.start),
@@ -2101,14 +2102,32 @@ const EventSelector : Component<{ open: boolean, onChange: Function, onSelect?: 
 			});
 		}
 
-		setEvents(events);
+		setEvents(aevents.sort((a: CEvent, b: CEvent) => {
+			const da = new Date(a.start.split('/').reverse().join('-'));
+			const db = new Date(b.start.split('/').reverse().join('-'));
+			return da > db ? -1 : da == db ? 0 : 1;
+		}));
+
+		setFilteredItems(
+			futureOnly() ?
+				getFutureEventsOnly() : 
+				events()
+		);
 	});
 
-	createEffect(() => setFilteredItems(events()));
+	function getFutureEventsOnly() {
+		return events().filter((x) => new Date(x.start.split('/').reverse().join('-')).getTime() > Date.now());
+	}
+
+	createEffect(() => setFilteredItems(
+		futureOnly() ?
+			getFutureEventsOnly() : 
+			events()
+	));
 
 	const [filteredItems, setFilteredItems] = createSignal<Array<CEvent>>([]);
 	function filter(value: string) {
-		setFilteredItems(events().filter((x) =>
+		setFilteredItems((futureOnly() ? getFutureEventsOnly() : events()).filter((x) =>
 			x.name.toLowerCase().includes(value.toLowerCase()) ||
 			x.location.toLowerCase().includes(value.toLowerCase())
 		));
@@ -2119,6 +2138,15 @@ const EventSelector : Component<{ open: boolean, onChange: Function, onSelect?: 
 			<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Evento</h2>
 			<div class='px-5 md:px-0'>
 				<SearchBar filter={filter}/>
+				<div class='py-2'>
+					<label class='flex place-content-center text-sm text-gray-200 items-center text-center'>
+						<input
+							type='checkbox' checked={!futureOnly()} onInput={(e) => setFutureOnly(!e.currentTarget.checked)}
+							class='h-4 w-4 border-2 border-gray-400 checked:bg-blue-500 checked:border-blue-500 appearence-none cursor-pointer transition-all duration-200'
+						/>
+						Mostrar eventos passados
+					</label>
+				</div>
 			</div>
 			<div class='flex place-content-center'>
 				<table class='min-w-full'>
