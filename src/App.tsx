@@ -407,7 +407,7 @@ export const PopoutMessageSpace : Component = () => {
 const Footer : Component = () => {
 	return (
 		<div class="fixed bottom-0 left-0 right-0 bg-transparent text-sm font-semibold text-center p-3 z-10 text-white">
-			v0.2
+			v0.5
 		</div>
 	);
 };
