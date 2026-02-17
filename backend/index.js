@@ -56,6 +56,13 @@ create table if not exists invites (
 	foreign key (user_id) references users(id)
 );
 
+create table if not exists account_resets (
+	token text primary key,
+	user_id integer not null,
+	used integer not null default 0,
+	foreign key (user_id) references users(id)
+);
+
 create table if not exists events (
 	id integer primary key autoincrement,
 	name text not null,
@@ -552,7 +559,89 @@ app.post("/api/login", async (req, res) => {
 		token: signJWT(user),
 		user: { id: user.id, name: user.username }
 	};
-})
+});
+
+app.post('/api/reset_user', { preHandler: [app.auth, requireAdmin] }, async (req, res) => {
+	const {
+		username
+	} = req.body;
+
+	const token = randomBytes(32).toString('hex');
+
+	try {
+		const user = db.prepare('select id from users where username = ?').get(username);
+		const pl = db.prepare('select token from account_resets where user_id = ? and used = 0').get(user.id);
+		if(pl && pl.token) {
+			console.log(`User ${username} already has an unused reset token. Returning it.`);
+			return {
+				resetLink: `/reset_password?token=${pl.token}`
+			};
+		}
+
+		db.prepare('insert into account_resets (token, user_id, used) values (?, ?, 0)').run(token, user.id);
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'Failed to generate reset code.' });
+	}
+
+	return {
+		resetLink: `/reset_password?token=${token}`
+	};
+});
+
+// Password reset token
+app.get('/api/reset_password', async (req, res) => {
+	if(!req.query) {
+		return res.code(400).send({ error: 'Invalid parameters.' });
+	}
+	const token = req.query.token;
+
+	if(!token) {
+		return { valid: false, reason: 'no_token' };
+	}
+
+	try {
+		const reset = db.prepare('select r.used, u.username from account_resets r join users u on u.id = r.user_id where r.token = ?').get(token);
+
+		if(!reset) {
+			return { valid: false, reason: 'invalid_token' };
+		} else if(reset.used) {
+			return { valid: false, reason: 'used_token' };
+		}
+
+		return {
+			valid: true,
+			username: reset.username
+		};
+	} catch(err) {
+		console.log(err);
+	}
+});
+
+app.post('/api/reset_password', async (req, res) => {
+	const {
+		token,
+		password
+	} = req.body;
+
+	const reset = db.prepare('select * from account_resets where token = ? and used = 0').get(token);
+
+	if(!reset) {
+		return { ok: false, error: 'Invalid link.' };
+	}
+
+	const hash = await bcrypt.hash(password, 10);
+
+	try {
+		db.prepare('update users set passhash = ? where id = ?').run(hash, reset.user_id);
+		db.prepare('update account_resets set used = 1 where token = ?').run(token);
+	} catch(err) {
+		console.log(err);
+		return { ok: false, error: 'Failed to update user database.' };
+	}
+
+	return { ok: true };
+});
 
 // token check
 app.get('/api/vcheck', { preHandler: app.auth }, () => {

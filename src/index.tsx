@@ -13,6 +13,7 @@ import {
 	ManageUsers,
 	Calendar,
 	Activate,
+	ResetPassword,
 	UserContextProvider,
 	protect,
 	protectAdmin
@@ -41,6 +42,7 @@ render(() => (
 			{/* All */}
 			<Route path='/login' component={Login}/>
 			<Route path='/activate' component={Activate}/>
+			<Route path='/reset_password' component={ResetPassword}/>
 		</Router>
 		<PopoutMessageSpace/>
 	</UserContextProvider>

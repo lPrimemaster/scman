@@ -823,9 +823,11 @@ interface UserDetails {
 
 export const ManageUsers : Component = () => {
 	const [showEraseModal, setShowEraseModal] = createSignal<boolean>(false);
+	const [showResetModal, setShowResetModal] = createSignal<boolean>(false);
 	const [expanded, setExpanded] = createSignal<UserDetails>();
 	const [users, setUsers] = createSignal<Array<UserDetails>>([]);
 	const [filteredItems, setFilteredItems] = createSignal<Array<UserDetails>>([]);
+	const [resetLink, setResetLink] = createSignal<string>();
 
 	onMount(async () => {
 		const res = await authFetch('/api/all_users');
@@ -867,6 +869,23 @@ export const ManageUsers : Component = () => {
 			x.role.toLowerCase().includes(value.toLowerCase()) ||
 			x.status.toLowerCase().includes(value.toLowerCase())
 		));
+	}
+
+	async function resetUserPassword(user: UserDetails) { 
+		const res = await authFetch('/api/reset_user', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ username: user.username })
+		});
+
+		if(!res.ok) {
+			pushMessage('Falha ao dar reset ao utilizador.', 'error');
+		} else {
+			const link = (await res.json()).resetLink;
+			setResetLink(window.location.origin + link);
+		}
 	}
 
 	return (
@@ -961,6 +980,15 @@ export const ManageUsers : Component = () => {
 															<div>
 																<button
 																	type='button'
+																	onClick={() => { setShowResetModal(true); }}
+																	class='bg-blue-600 text-gray-200 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer mt-6 px-3'
+																>
+																	Reset Password
+																</button>
+															</div>
+															<div>
+																<button
+																	type='button'
 																	// onClick={() => { setShowEraseModal(false); }}
 																	class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
 																	disabled
@@ -978,6 +1006,35 @@ export const ManageUsers : Component = () => {
 							</tbody>
 						</table>
 					</div>
+					<Modal open={showResetModal()} onChange={(s: boolean) => {
+						setResetLink(undefined);
+						setShowResetModal(s);
+					}}>
+						<h1 class='text-lg text-center pt-3'>Reset Password?</h1>
+						<p class='text-center'>
+							Esta ação apaga a password do utilizador.
+						</p>
+						<Show when={resetLink()}>
+							<div class='mt-5 py-5 flex place-content-center'>
+								<input
+									type='text'
+									value={resetLink()}
+									class='min-w-32 w-1/2 border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-400 cursor-text'
+									onClick={(e) => e.currentTarget.select()}
+									readonly
+								/>
+							</div>
+						</Show>
+						<div class='flex place-content-center'>
+							<button
+								type='button'
+								onClick={() => resetUserPassword(expanded()!)}
+								class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
+							>
+								Resetar
+							</button>
+						</div>
+					</Modal>
 				</div>
 			</div>
 		</>
@@ -2532,6 +2589,131 @@ export const Activate : Component = () => {
 							class='w-full bg-blue-600 text-gray-200 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer'
 						>
 							Ativar
+						</button>
+					</form>
+				</Show>
+			</div>
+		</div>
+	);
+};
+
+export const ResetPassword : Component = () => {
+	const [password, setPassword] = createSignal<string>('');
+	const [confPassword, setConfPassword] = createSignal<string>('');
+	const [status, setStatus] = createSignal<boolean>(false);
+	const [username, setUsername] = createSignal<string>('');
+	const navigate = useNavigate();
+
+	onMount(async () => {
+		const token = new URLSearchParams(location.search).get('token');
+
+		if(!token) {
+			setStatus(false);
+			return;
+		}
+
+		const res = await fetch(`/api/reset_password?token=${token}`);
+		if(!res.ok) {
+			pushMessage('Falha ao autenticar token.', 'error');
+			console.log(res);
+			setStatus(false);
+			return;
+		}
+
+		const data = await res.json();
+
+		if(!data.valid) {
+			pushMessage('Reset inválido: ' + data.reason, 'error');
+			setStatus(false);
+			return;
+		}
+
+		setStatus(true);
+		setUsername(data.username);
+	});
+
+	async function resetAccount(e: Event) {
+		e.preventDefault();
+
+		if(password() !== confPassword()) {
+			pushMessage('Passwords não correspondem.', 'error');
+			setPassword('');
+			setConfPassword('');
+			return;
+		}
+
+		// now post
+		const token = new URLSearchParams(location.search).get('token');
+		const res = await fetch('/api/reset_password', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ token: token, password: password() })
+		});
+
+		const data = await res.json();
+
+		if(data.ok) {
+			navigate('/');
+		}
+	}
+
+	return (
+		<div class='min-h-screen flex items-center justify-center bg-gray-900'>
+			<div class='w-full max-w-md p-5 bg-gray-700 rounded-2xl overflow-x-auto'>
+				<div class='flex place-content-center'>
+					<img
+						src='/logo.svg'
+						alt='Logo'
+						class='w-25 mb-5'
+					/>
+				</div>
+				<Show when={status()} fallback={
+					<div class='text-center'>
+						<h1 class='text-xl text-center font-medium text-gray-200'>Token Inválido</h1>
+						<A href='/' class='text-lg text-blue-300 hover:text-blue-500 transition'>Início</A>
+					</div>
+				}>
+				<h1 class='text-xl text-center font-medium text-gray-200'>Nova Password</h1>
+					<form onSubmit={resetAccount} class='space-y-4'>
+						<div>
+							<label class='block text-gray-200 text-sm font-medium mb-1'>Username</label>
+							<input
+								type='username'
+								value={username()}
+								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200 text-gray-400'
+								required
+								readonly
+							/>
+						</div>
+						<div>
+							<label class='block text-gray-200 text-sm font-medium mb-1'>Nova Password</label>
+							<input
+								type='password'
+								autocomplete='new-password'
+								value={password()}
+								onInput={(e) => setPassword(e.currentTarget.value)}
+								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+								required
+							/>
+						</div>
+						<div>
+							<label class='block text-gray-200 text-sm font-medium mb-1'>Confirmar Nova Password</label>
+							<input
+								type='password'
+								autocomplete='new-password'
+								value={confPassword()}
+								onInput={(e) => setConfPassword(e.currentTarget.value)}
+								class='w-full border border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
+								required
+							/>
+						</div>
+						<button
+							type='submit'
+							class='w-full bg-blue-600 text-gray-200 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer'
+						>
+							Redefinir Password
 						</button>
 					</form>
 				</Show>
