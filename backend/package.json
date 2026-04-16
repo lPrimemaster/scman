@@ -6,6 +6,7 @@
   "type": "module",
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/multipart": "^10.0.0",
     "@fastify/static": "^9.1.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.5.0",

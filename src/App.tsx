@@ -1594,7 +1594,7 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 
 			<Show when={props.event.files}>
 				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Anexos</h2>
-				<div class='flex gap-2'>
+				<div class='mx-5 flex gap-2'>
 					<For each={files()}>{(file: string) => 
 						<FileAttachButton descriptor={file}/>
 					}</For>
