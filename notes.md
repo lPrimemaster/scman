@@ -1,0 +1,4 @@
+- [ ] Status for each athlete on the listing
+- [ ] Browser notifications
+- [ ] Payments
+- [ ] Refactor code (code base is no longer a toy)

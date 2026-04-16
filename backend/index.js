@@ -7,6 +7,12 @@ import { randomBytes } from 'crypto';
 import admin from 'firebase-admin';
 import fs from 'node:fs';
 import cron from 'node-cron';
+import { v7 as uuidv7 } from "uuid";
+import multipart from "@fastify/multipart";
+import { pipeline } from 'stream/promises';
+import { Transform } from "stream";
+import path from "path";
+import crypto from 'crypto';
 import 'dotenv/config';
 
 const app = Fastify();
@@ -30,10 +36,22 @@ admin.initializeApp({
 const PAYPAL_BASE = process.env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
 const PAYPAL_EXPIRE_DELTA = 5 * 60 * 1000;
 
+// Disk storage (use local only for now)
+const UPLOAD_DIR = 'uploads/';
+
+// Form data
+app.register(multipart);
+
+// Setup uploads directory
+if (!fs.existsSync(UPLOAD_DIR)) {
+	fs.mkdirSync(UPLOAD_DIR);
+}
+
 console.log('Setting environment:');
 console.log(`DB_PATH: ${DB_PATH}`);
 console.log(`SECRET_PROD: ${SECRET !== 'dev-secret'}`);
 console.log(`PORT: ${PORT}`);
+console.log(`UPLOAD_DIR: ${UPLOAD_DIR}`);
 
 // ====================================================
 // SQL Schema setup
@@ -63,6 +81,10 @@ create table if not exists account_resets (
 	foreign key (user_id) references users(id)
 );
 
+create table if not exists account_disabled (
+	user_id integer primary key
+);
+
 create table if not exists events (
 	id integer primary key autoincrement,
 	name text not null,
@@ -73,7 +95,8 @@ create table if not exists events (
 	change_limit integer not null,
 	type integer not null,
 	price text not null,
-	description text
+	description text,
+	files text
 );
 
 create table if not exists eventnotifies (
@@ -126,8 +149,37 @@ create table if not exists payments (
 );
 
 create index if not exists idx_payments_order on payments(order_id);
+
+create table if not exists files (
+	id integer primary key autoincrement,
+	filename text not null,
+	internal_filename text not null,
+	handle text not null,
+	path text not null,
+	size integer not null,
+	mime_type text,
+	uploaded_at datetime default CURRENT_TIMESTAMP
+);
 `);
 // ====================================================
+
+// Setup file storage
+async function fileSaveToDisk(file, filename) {
+	const filepath = path.join(UPLOAD_DIR, filename);
+	const stream = fs.createWriteStream(filepath);
+
+	let size = 0;
+	const cs = new Transform({
+		transform(chunk, _, cb) {
+			size += chunk.length;
+			cb(null, chunk);
+		}
+	});
+
+	await pipeline(file.file, cs, stream);
+
+	return { size };
+}
 
 // Setup Paypal
 async function getPaypalAccessToken() {
@@ -373,6 +425,13 @@ app.decorate('auth', async (req, res) => {
 	try {
 		const token = h.split(" ")[1];
 		req.user = verifyJWT(token);
+
+		const row = db.prepare(`select 1 from account_disabled where user_id = ?`).get(req.user.id);
+
+		if (row) {
+			return res.code(403).send({ error: 'Account disabled' });
+		}
+
 	} catch {
 		return res.code(401).send();
 	}
@@ -643,13 +702,37 @@ app.post('/api/reset_password', async (req, res) => {
 	return { ok: true };
 });
 
+// Disable user
+app.post('/api/disable_user', { preHandler: [app.auth, requireAdmin] }, async (req, res) => {
+	const {
+		username,
+		disable
+	} = req.body;
+
+	try {
+		const user = db.prepare('select id from users where username = ?').get(username);
+		if(disable) {
+			db.prepare('insert into account_disabled (user_id) values (?)').run(user.id);
+		} else {
+			db.prepare('delete from account_disabled where user_id = ?').run(user.id);
+		}
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'Failed to disable/enable user account.' });
+	}
+
+	return {
+		ok: true
+	};
+});
+
 // token check
 app.get('/api/vcheck', { preHandler: app.auth }, () => {
 	return { ok: true };
 });
 
 // admin token check
-app.get('/api/adminvcheck', { preHandler: [app.auth, requireAdmin] }, (req) => {
+app.get('/api/adminvcheck', { preHandler: [app.auth, requireAdmin] }, () => {
 	return { ok: true };
 });
 
@@ -681,7 +764,7 @@ app.get('/api/all_users', { preHandler: [app.auth, requireAdmin] }, (req, res) =
 	}
 
 	try {
-		const users = db.prepare('select * from users').all();
+		const users = db.prepare('select u.*, ad.user_id is not null as is_disabled from users as u left join account_disabled as ad on u.id == ad.user_id;').all();
 		return users;
 	} catch(err) {
 		console.log(err);
@@ -855,11 +938,12 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 		maxalt,
 		type,
 		price,
-		description
+		description,
+		files
 	} = req.body;
 
 	try {
-		db.prepare('insert into events (name, start, end, location, sub_limit_date, change_limit, type, price, description) values (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+		db.prepare('insert into events (name, start, end, location, sub_limit_date, change_limit, type, price, description, files) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
 			name,
 			start,
 			end,
@@ -868,7 +952,8 @@ app.post('/api/new_event', { preHandler: [app.auth, requireAdmin] }, (req, res) 
 			maxalt,
 			type,
 			price,
-			description
+			description,
+			files
 		);
 
 		const message = {
@@ -902,13 +987,14 @@ app.post('/api/edit_event', { preHandler: [app.auth, requireAdmin] }, (req, res)
 		maxalt,
 		type,
 		price,
-		description
+		description,
+		files
 	} = req.body;
 
 	try {
 		db.prepare(`
 			update events set
-			name = ?, start = ?, end = ?, location = ?, sub_limit_date = ?, change_limit = ?, type = ?, price = ?, description = ?
+			name = ?, start = ?, end = ?, location = ?, sub_limit_date = ?, change_limit = ?, type = ?, price = ?, description = ?, files = ?
 			where id = ?
 		`).run(
 			name,
@@ -920,6 +1006,7 @@ app.post('/api/edit_event', { preHandler: [app.auth, requireAdmin] }, (req, res)
 			type,
 			price,
 			description,
+			files,
 			id
 		);
 
@@ -1143,6 +1230,151 @@ app.get('/api/payment_status', { preHandler: [app.auth] }, async (req, res) => {
 		return { status: Number(event.price) == 0 ? 'FREE' : payment.status };
 	}
 	return { status: 'UNPAID' };
+});
+
+app.post('/api/upload_file', { preHandler: [app.auth, requireAdmin] }, async (req, res) => {
+	const file = await req.file();
+
+	if(!file) {
+		return res.code(400).send({ error: 'Missing file.' });
+	}
+
+	const handle = uuidv7()
+	const internal_name = handle + path.extname(file.filename);
+
+	try {
+
+		const meta = await fileSaveToDisk(file, internal_name);
+
+		db.prepare('insert into files (filename, internal_filename, handle, path, size, mime_type) values (?, ?, ?, ?, ?, ?)').run(
+			file.filename,
+			internal_name,
+			handle,
+			UPLOAD_DIR,
+			meta.size,
+			file.mimetype
+		);
+
+		console.log(`File: <${handle}> uploaded.`);
+		return { ok: true, handle: handle };
+	} catch(err) {
+		console.log(err);
+
+		const fspath = path.join(UPLOAD_DIR, internal_name);
+		if(fs.existsSync(fspath)) {
+			// Erase the file if an exception occured and it exists
+			fs.unlinkSync(fspath);
+		}
+
+		return res.code(400).send({ error: 'Failed to run file upload query.' });
+	}
+});
+
+app.post('/api/delete_file', { preHandler: [app.auth, requireAdmin] }, async (req, res) => {
+	const { uuid } = req.body;
+
+	if (!uuid) {
+		return res.code(400).send({ error: "Missing file uuid." });
+	}
+
+	try {
+		const file = db.prepare('select * from files where handle = ?').get(uuid);
+
+		if(!file) {
+			return res.code(404).send({ error: 'Failed to find file.' });
+		}
+
+		const filepath = path.resolve(path.join(file.path, file.internal_filename));
+
+		fs.unlink(filepath, (err) => {
+			if(err && err.code !== 'ENOENT') {
+				return res.code(500).send({ error: `Internal error: ${err.message}.` });
+			}
+
+			db.prepare('delete from files where handle = ?').run(uuid);
+			console.log(`File: <${uuid}> deleted.`);
+
+			return { ok: true };
+		});
+
+	} catch(err) {
+		console.log(err);
+		return res.code(400).send({ error: 'Failed run file deletion query.' });
+	}
+});
+
+function signDownloadUrl(uuid, expiresAt) {
+	const data = `${uuid}.${expiresAt}`;
+
+	const sig = crypto
+		.createHmac("sha256", SECRET) // We are nasty we use same secret for files... bad boys bad boys...
+		.update(data)
+		.digest("hex");
+
+	return sig;
+}
+
+app.get("/api/files/sign/:uuid", { preHandler: [app.auth] }, async (req) => {
+	const uuid = req.params.uuid;
+
+	const exp = Date.now() + 60 * 1000;
+	const sig = signDownloadUrl(uuid, exp);
+
+	return {
+		url: `/api/files/${uuid}?exp=${exp}&sig=${sig}`,
+	};
+});
+
+// No pre handler the query has a generated signature
+app.get('/api/files/:uuid', async (req, res) => {
+	const { uuid } = req.params;
+	const { exp, sig } = req.query;
+
+	if(!uuid || !exp || !sig) {
+		return res.code(400).send({ error: 'Missing file uuid or sign key.' });
+	}
+
+	if(Date.now() > Number(exp)) {
+		return res.code(403).send({ error: 'Link expired.' });
+	}
+
+	// Verify before serving
+	const expected = crypto
+		.createHmac('sha256', SECRET)
+		.update(`${uuid}.${exp}`)
+		.digest('hex');
+
+	if(sig !== expected) {
+		return res.code(403).send({ error: 'Invalid signature.' });
+	}
+
+	try {
+		const file = db.prepare('select * from files where handle = ?').get(uuid);
+
+		if(!file) {
+			return res.code(404).send({ error: 'File not found.' });
+		}
+
+		const fpath = path.join(file.path, file.internal_filename);
+
+		console.log('Serving path = ', fpath);
+
+		const stream = fs.createReadStream(
+			fpath
+		);
+
+		res.header(
+			"Content-Disposition",
+			`inline; filename="${file.filename}"`
+		);
+
+		res.type(file.mime_type || "application/octet-stream");
+
+		return res.send(stream);
+	} catch(err) {
+		console.log(err);
+		return res.code(500).send({ error: 'Failed to run file fetch query.' });
+	}
 });
 
 app.listen({ port: PORT });

@@ -100,6 +100,11 @@ async function checkToken() {
 
 	try {
 		const res = await authFetch('/api/vcheck');
+		const status = await res.json();
+		if(!status.ok) {
+			pushMessage('Conta desativada por um administrador.', 'error');
+			return false;
+		}
 		return res.ok;
 	} catch {
 		return false;
@@ -142,6 +147,19 @@ function convertDateLocale(value: string) {
 		day: '2-digit',
 	});
 }
+
+function formatBytes(bytes: number) {
+	if (bytes === 0) return "0 B";
+
+	const base = 1000;
+	const units = ["B", "kB", "MB", "GB", "TB", "PB"];
+
+	const i = Math.floor(Math.log(bytes) / Math.log(base));
+	const value = bytes / Math.pow(base, i);
+
+	return `${value.toFixed(1)} ${units[i]}`;
+}
+
 
 interface TokenPayload {
 	id: number;
@@ -407,7 +425,7 @@ export const PopoutMessageSpace : Component = () => {
 const Footer : Component = () => {
 	return (
 		<div class="fixed bottom-0 left-0 right-0 bg-transparent text-sm font-semibold text-center p-3 z-10 text-white">
-			v0.5
+			v0.7
 		</div>
 	);
 };
@@ -823,6 +841,7 @@ interface UserDetails {
 
 export const ManageUsers : Component = () => {
 	const [showEraseModal, setShowEraseModal] = createSignal<boolean>(false);
+	const [showActivateModal, setShowActivateModal] = createSignal<boolean>(false);
 	const [showResetModal, setShowResetModal] = createSignal<boolean>(false);
 	const [expanded, setExpanded] = createSignal<UserDetails>();
 	const [users, setUsers] = createSignal<Array<UserDetails>>([]);
@@ -839,7 +858,7 @@ export const ManageUsers : Component = () => {
 					name: u.full_name,
 					username: u.username,
 					role: u.role,
-					status: (u.active == 1) ? 'Conta Activa' : ((u.active == 0) ? 'Conta Inactiva' : 'Conta Inválida'),
+					status: (u.active == 1) ? ((u.is_disabled == 1) ? 'Conta Desativada' : 'Conta Activa') : ((u.active == 0) ? 'Conta Inactiva' : 'Conta Inválida'),
 					id: u.id
 				});
 			}
@@ -885,6 +904,40 @@ export const ManageUsers : Component = () => {
 		} else {
 			const link = (await res.json()).resetLink;
 			setResetLink(window.location.origin + link);
+		}
+	}
+
+	async function disableUserAccount(user: UserDetails) {
+		const res = await authFetch('/api/disable_user', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ username: user.username, disable: true })
+		});
+
+		if(!res.ok) {
+			pushMessage('Falha ao desativar o utilizador.', 'error');
+		} else {
+			setShowEraseModal(false);
+			setUsers((p) => p.map(u => u.id === user.id ? { ...u, status: 'Conta Desativada' } : u));
+		}
+	}
+
+	async function enableUserAccount(user: UserDetails) {
+		const res = await authFetch('/api/disable_user', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ username: user.username, disable: false })
+		});
+
+		if(!res.ok) {
+			pushMessage('Falha ao re-ativar o utilizador.', 'error');
+		} else {
+			setShowActivateModal(false);
+			setUsers((p) => p.map(u => u.id === user.id ? { ...u, status: 'Conta Activa' } : u));
 		}
 	}
 
@@ -989,11 +1042,21 @@ export const ManageUsers : Component = () => {
 															<div>
 																<button
 																	type='button'
-																	// onClick={() => { setShowEraseModal(false); }}
+																	onClick={() => { setShowEraseModal(true); }}
 																	class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
-																	disabled
+																	disabled={expanded()!.status == 'Conta Desativada'}
 																>
-																	Apagar Conta
+																	Desativar Conta
+																</button>
+															</div>
+															<div>
+																<button
+																	type='button'
+																	onClick={() => { setShowActivateModal(true); }}
+																	class='bg-green-600 text-gray-200 py-2 rounded-lg hover:bg-green-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-green-900 disabled:text-gray-400'
+																	disabled={expanded()!.status != 'Conta Desativada'}
+																>
+																	Re-ativar Conta
 																</button>
 															</div>
 														</div>
@@ -1032,6 +1095,40 @@ export const ManageUsers : Component = () => {
 								class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
 							>
 								Resetar
+							</button>
+						</div>
+					</Modal>
+					<Modal open={showEraseModal()} onChange={(s: boolean) => {
+						setShowEraseModal(s);
+					}}>
+						<h1 class='text-lg text-center pt-3'>Desativar conta.</h1>
+						<p class='text-center'>
+							Esta ação não apaga a conta, mas desativa o utilizador temporáriamente. 
+						</p>
+						<div class='flex place-content-center'>
+							<button
+								type='button'
+								onClick={() => disableUserAccount(expanded()!)}
+								class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
+							>
+								Desativar
+							</button>
+						</div>
+					</Modal>
+					<Modal open={showActivateModal()} onChange={(s: boolean) => {
+						setShowActivateModal(s);
+					}}>
+						<h1 class='text-lg text-center pt-3'>Re-ativar conta.</h1>
+						<p class='text-center'>
+							Esta ação reativa o utilizador. 
+						</p>
+						<div class='flex place-content-center'>
+							<button
+								type='button'
+								onClick={() => enableUserAccount(expanded()!)}
+								class='bg-red-600 text-gray-200 py-2 rounded-lg hover:bg-red-700 transition cursor-pointer mt-6 px-3 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-gray-400'
+							>
+								Re-ativar
 							</button>
 						</div>
 					</Modal>
@@ -1132,6 +1229,7 @@ interface CEvent {
 	type: number;
 	price: string;
 	description?: string;
+	files?: string;
 };
 
 const NameTable : Component<{ class?: string, names: Array<string> }> = (props) => {
@@ -1171,12 +1269,53 @@ interface CTableData {
 	noanswer: Array<string>;
 };
 
+const FileAttachButton : Component<{ descriptor: string }> = (props) => {
+
+	const [handle, setHandle] = createSignal<string>('');
+	const [name, setName] = createSignal<string>('');
+
+	onMount(() => {
+		// Generate button based on descriptor
+		// handle[name]
+		const data = props.descriptor.split('[');
+		setHandle(data[0]);
+		setName(data[1].slice(0, -1));
+	});
+
+	async function downloadContent() {
+		const res = await authFetch(`/api/files/sign/${handle()}`);
+
+		if(!res.ok) {
+			return;
+		}
+
+		const { url } = await res.json();
+
+		const a = document.createElement('a');
+		a.href = url;
+		a.target = '_blank';
+		a.click();
+		a.remove();
+	}
+
+	return (
+		<button
+			type='button'
+			class='bg-blue-600 text-gray-200 py-2 rounded-lg hover:bg-blue-700 transition cursor-pointer px-4 active:bg-blue-800'
+			onClick={downloadContent}
+		>
+			{name()}	
+		</button>
+	);
+};
+
 const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: CEvent }> = (props) => {
 	const [selfResponse, setSelfResponse] = createSignal<number>(-1);
 	const [enableVote, setEnableVote] = createSignal<boolean>(true);
 	const [tableData, setTableData] = createSignal<CTableData>();
 	const [selfPayed, setSelfPayed] = createSignal<boolean>(false);
 	const [expired, setExpired] = createSignal<boolean>(false);
+	const [files, setFiles] = createSignal<Array<string>>([]);
 
 	async function updateTable(event: CEvent) {
 		const params = new URLSearchParams();
@@ -1360,8 +1499,16 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 		setExpired(date.getTime() + MS_DAY < Date.now());
 	}
 
+	function setupFiles(event: CEvent) {
+		if(event.files) {
+			const ifiles = event.files.split(':');
+			setFiles(ifiles);
+		}
+	}
+	
 	createEffect(on(() => props.event, () => {
 		if(props.event) {
+			setupFiles(props.event);
 			updateTable(props.event);
 
 			// ====
@@ -1443,6 +1590,15 @@ const EventModalDisplay : Component<{ open: boolean, onChange: Function, event: 
 				<p class='mx-5 text-justify'>
 					{props.event.description}
 				</p>
+			</Show>
+
+			<Show when={props.event.files}>
+				<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Anexos</h2>
+				<div class='flex gap-2'>
+					<For each={files()}>{(file: string) => 
+						<FileAttachButton descriptor={file}/>
+					}</For>
+				</div>
 			</Show>
 
 			<h2 class='text-white mt-10 pb-1 text-lg font-semibold text-center'>Disponibilidade</h2>
@@ -1581,7 +1737,8 @@ const NextTable : Component<{ type: number }> = (props) => {
 				location: e.location,
 				type: e.type,
 				price: e.price,
-				description: e.description
+				description: e.description,
+				files: e.files
 			});
 		}
 
@@ -1666,6 +1823,19 @@ const LButton : Component<{ onClick?: (e: MouseEvent) => void, disabled?: boolea
 	);
 };
 
+const SButton : Component<{ onClick?: (e: MouseEvent) => void, disabled?: boolean, children?: JSXElement }> = (props) => {
+	return (
+		<button
+			class='size-5 place-items-center rounded-md shadow-md bg-red-700 hover:bg-red-600 cursor-pointer hover:shadow-lg active:bg-red-500 transition disabled:cursor-not-allowed disabled:bg-red-900 disabled:shadow-none'
+			onClick={props.onClick}
+			disabled={props.disabled}
+			type='button'
+		>
+			{props.children}
+		</button>
+	);
+};
+
 const AccountManager : Component = () => {
 	const navigate = useNavigate();
 
@@ -1691,6 +1861,140 @@ const AccountManager : Component = () => {
 	);
 };
 
+const FileUploadBadge : Component<{ file: FileUploadInfo, onRemove: Function, onAdd: Function, defer?: boolean }> = (props) => {
+	const [progress, setProgress] = createSignal(0);
+	const [status, setStatus] = createSignal<string>('uploading');
+	const [handle, setHandle] = createSignal<string>('');
+	const [removed, setRemoved] = createSignal<boolean>(false);
+
+	function startUploadJob() {
+		const xhr = new XMLHttpRequest();
+		const formData = new FormData();
+		formData.append("file", props.file.file!);
+
+		xhr.open("POST", "/api/upload_file");
+		xhr.setRequestHeader(
+			"Authorization",
+			`Bearer ${getToken()}`
+		);
+
+		xhr.upload.onprogress = (e) => {
+			if (e.lengthComputable) {
+				setProgress(Math.round((e.loaded / e.total) * 100));
+			}
+		};
+
+		xhr.onload = () => {
+			if (xhr.status === 200) {
+				setStatus("done");
+				const res = JSON.parse(xhr.responseText);
+				setHandle(res.handle);
+				props.onAdd(res.handle);
+			} else {
+				setStatus("error");
+				props.onRemove();
+			}
+		};
+
+		xhr.onerror = (err) => { console.log(err); setStatus("error"); props.onRemove(); }
+
+		xhr.send(formData);
+	}
+
+	async function deleteFile() {
+		if(props.defer === undefined || !props.defer) {
+			const res = await authFetch('/api/delete_file', {
+					method: 'POST',
+					body: JSON.stringify({ uuid: handle() })
+				}
+			);
+
+			if(!res.ok) {
+				console.log('Failed to delete file.');
+				return;
+			}
+		} else {
+			setRemoved(true);
+		}
+		props.onRemove();
+	}
+
+	onMount(() => {
+		if(props.file.file) {
+			startUploadJob();
+		} else {
+			setStatus("done");
+			setHandle(props.file.handle!);
+			setProgress(100);
+			// props.onAdd(res.handle);
+		}
+	});
+
+	return (
+		<div class="relative flex items-center gap-1 py-2 px-4 rounded-md bg-gray-500 overflow-hidden">
+
+			<div 
+				class={`absolute left-0 top-0 h-full ${removed() ? 'bg-red-800' : (props.file.file === undefined ? 'bg-blue-800' :'bg-green-500')} transition-all duration-200`}
+				style={{ width: `${progress()}%` }}
+			/>
+
+			<span class='relative px-2 z-10'>{props.file.displayname}</span>
+			<span class='relative px-2 z-10'>{props.file.displaysize}</span>
+			<Show when={status() === 'done'}>
+				<span class='relative flex ml-auto place-items-center z-10'>
+					<SButton
+						onClick={deleteFile}
+						disabled={status() !== 'done' && !removed()}
+					>
+						<img src='/remove.svg' class='size-2'/>
+					</SButton>
+				</span>
+			</Show>
+		</div>
+	);
+};
+
+const FileDropZone : Component<{ onFiles: Function }> = (props) => {
+
+	const [dragging, setDragging] = createSignal<boolean>(false);
+
+	function handleFiles(files: FileList) {
+		if(!files || files.length === 0) return;
+		props.onFiles(files);
+	}
+
+	return (
+		<div class="p-2 w-full border border-gray-500 rounded-md">
+			<div
+				class={`py-2 px-4 border-2 border-dashed border-gray-500 rounded-sm text-center ${dragging() ? 'bg-blue-600/20' : 'bg-gray-600' } transition-500 cursor-pointer`}
+				onDragOver={(e: DragEvent) => {
+					e.preventDefault();
+					setDragging(true);
+				}}
+				onDragLeave={() => setDragging(false)}
+				onDrop={(e: DragEvent) => {
+					e.preventDefault();
+					setDragging(false);
+					handleFiles(e.dataTransfer!.files);
+				}}
+				onClick={() => document.getElementById('file-upload-input')!.click()}
+			>
+				<input id='file-upload-input' type='file' hidden onChange={(e: EventInput) => handleFiles(e.target.files!)}/>
+				<div class='w-full'>
+					Arrastar ficheiro ou clicar.
+				</div>
+			</div>
+		</div>
+	);
+};
+
+interface FileUploadInfo {
+	handle?: string;
+	file?: File;
+	displayname: string;
+	displaysize: string;
+};
+
 const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [name, setName] = createSignal<string>('');
 	const [location, setLocation] = createSignal<string>('');
@@ -1701,6 +2005,8 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 	const [type, setType] = createSignal<string>('');
 	const [price, setPrice] = createSignal<string>('');
 	const [desc, setDesc] = createSignal<string>('');
+	const [files, filesActions] = createStore<Array<FileUploadInfo | undefined>>([]);
+	const [submit, setSubmit] = createSignal<boolean>(false);
 
 	const typeToTypeid = createMemo(() => {
 		switch(type()) {
@@ -1712,6 +2018,21 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 		}
 		return -1;
 	});
+
+	function getFilesHandlesArray() {
+		let hString = '';
+		for(const file of files) {
+			if(file && file.handle) {
+				hString += `${file.handle}[${file.displayname}]:`;
+			}
+		}
+
+		if(hString.length > 0) {
+			hString = hString.slice(0, -1);
+		}
+
+		return hString;
+	}
 
 	function getValidateDateMin() {
 		return new Date().toISOString().split('T')[0];
@@ -1731,20 +2052,38 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 				maxalt: maxAlt(),
 				type: typeToTypeid(),
 				price: price(),
-				description: desc()
+				description: desc(),
+				files: getFilesHandlesArray()
 			})
 		});
 
 		if(!res.ok) {
 			pushMessage('Falha ao cria evento.', 'error');
 		} else {
+			setSubmit(true);
 			props.onChange(false);
 			pushMessage('Evento criado.', 'info');
 		}
 	}
 
+	function closeAndHandleRogueFiles(status: boolean) {
+		// Clean files up we closed without submitting successfully
+		if(status === false && !submit() && files.length > 0) {
+			for(const file of files) {
+				if(!file || !file.handle) continue;
+
+				authFetch('/api/delete_file', {
+						method: 'POST',
+						body: JSON.stringify({ uuid: file.handle })
+					}
+				);
+			}
+		}
+		props.onChange(status);
+	}
+
 	return (
-		<Modal {...props}>
+		<Modal {...props} open={props.open} onChange={closeAndHandleRogueFiles}>
 			<h2 class='text-white pt-10 md:pt-0 pb-4 text-2xl font-semibold text-center'>Novo Evento</h2>
 			<div class='flex place-content-center'>
 				<form onSubmit={submitEvent} class='lg:w-3/4 space-y-4'>
@@ -1850,6 +2189,29 @@ const NewEvent : Component<{ open: boolean, onChange: Function }> = (props) => {
 							class='w-full border md:min-h-48 border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
 						/>
 					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Anexos</label>
+						<div class='flex flex-col gap-2 mb-2'>
+							<For each={files}>{(file: FileUploadInfo | undefined, index: Accessor<number>) =>
+								<Show when={file !== undefined}>
+									<FileUploadBadge
+										file={file!}
+										onRemove={() => filesActions(index(), undefined)}
+										onAdd={(handle: string) => filesActions(index(), 'handle', handle)}
+									/>
+								</Show>
+							}</For>
+						</div>
+						<FileDropZone onFiles={(ifiles: FileList) => {
+							for(const file of ifiles) {
+								filesActions(files.length, {
+									displayname: file.name,
+									displaysize: formatBytes(file.size),
+									file: file
+								});
+							}
+						}}/>
+					</div>
 
 					<button
 						type='submit'
@@ -1875,6 +2237,25 @@ const EditEvent : Component<{ open: boolean, onChange: Function }> = (props) => 
 	const [price, setPrice] = createSignal<string>('');
 	const [desc, setDesc] = createSignal<string>('');
 	const [event, setEvent] = createSignal<CEvent | undefined>(undefined);
+	const [files, filesActions] = createStore<Array<FileUploadInfo | undefined>>([]);
+	const [fremove, setFremove] = createStore<Array<number>>([]);
+
+	function convertFiles(filestr: string) {
+		filesActions([]);
+		console.log('convert');
+		const ifiles = filestr.split(':');
+		for(const file of ifiles) {
+			const part = file.split('[');
+			const handle = part[0];
+			const name = part[1].slice(0, -1);
+
+			filesActions(files.length, {
+				handle: handle,
+				displayname: name,
+				displaysize: '',
+			});
+		}
+	}
 
 	function typeidToType(tid: number) {
 		switch(tid) {
@@ -1904,6 +2285,7 @@ const EditEvent : Component<{ open: boolean, onChange: Function }> = (props) => 
 			setType(typeidToType(evt.type));
 			setPrice(Number(evt.price).toFixed(2).toString());
 			evt.description !== undefined && setDesc(evt.description);
+			evt.files !== undefined && queueMicrotask(() => convertFiles(evt.files!));
 		}
 	});
 
@@ -1918,12 +2300,37 @@ const EditEvent : Component<{ open: boolean, onChange: Function }> = (props) => 
 		return -1;
 	});
 
+	function getFilesHandlesArray() {
+		let hString = '';
+		for(const file of files) {
+			if(file && file.handle) {
+				hString += `${file.handle}[${file.displayname}]:`;
+			}
+		}
+
+		if(hString.length > 0) {
+			hString = hString.slice(0, -1);
+		}
+
+		return hString;
+	}
+
 	function getValidateDateMin() {
 		return new Date().toISOString().split('T')[0];
 	}
 
 	async function submitEvent(e: Event) {
 		e.preventDefault();
+
+		for(const fr of fremove) {
+			if(!files[fr]) continue;
+
+			await authFetch('/api/delete_file', {
+				method: 'POST',
+				body: JSON.stringify({ uuid: files[fr].handle! })
+			});
+			filesActions(fr, undefined);
+		}
 
 		const res = await authFetch('/api/edit_event', {
 			method: 'POST',
@@ -1937,7 +2344,8 @@ const EditEvent : Component<{ open: boolean, onChange: Function }> = (props) => 
 				maxalt: maxAlt(),
 				type: typeToTypeid(),
 				price: price(),
-				description: desc()
+				description: desc(),
+				files: getFilesHandlesArray()
 			})
 		});
 
@@ -2057,6 +2465,30 @@ const EditEvent : Component<{ open: boolean, onChange: Function }> = (props) => 
 							class='w-full border md:min-h-48 border-gray-500 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-200'
 						/>
 					</div>
+					<div>
+						<label class='block text-gray-200 text-sm font-medium mb-1'>Anexos</label>
+						<div class='flex flex-col gap-2 mb-2'>
+							<For each={files}>{(file: FileUploadInfo | undefined, index: Accessor<number>) =>
+								<Show when={file !== undefined}>
+									<FileUploadBadge
+										file={file!}
+										defer
+										onRemove={() => setFremove(fremove.length, index())}
+										onAdd={(handle: string) => filesActions(index(), 'handle', handle)}
+									/>
+								</Show>
+							}</For>
+						</div>
+						<FileDropZone onFiles={(ifiles: FileList) => {
+							for(const file of ifiles) {
+								filesActions(files.length, {
+									displayname: file.name,
+									displaysize: formatBytes(file.size),
+									file: file
+								});
+							}
+						}}/>
+					</div>
 
 					<button
 						type='submit'
@@ -2155,7 +2587,8 @@ const EventSelector : Component<{ open: boolean, onChange: Function, onSelect?: 
 				location: e.location,
 				price: e.price,
 				type: e.type,
-				description: e.description
+				description: e.description,
+				files: e.files
 			});
 		}
 
@@ -2437,6 +2870,7 @@ export const App : Component = () => {
 					</div>
 				</Card>
 			</Show>
+			{/*
 			<Card class='my-5 mx-5 bg-gray-700 text-gray-100'>
 				<h1 class='font-bold text-md text-center'>Próximas provas CPT</h1>
 				<div>
@@ -2449,6 +2883,7 @@ export const App : Component = () => {
 					<NextTable type={1}/>
 				</div>
 			</Card>
+			*/}
 		</>
 	);
 };
@@ -2766,6 +3201,7 @@ export const Calendar : Component = () => {
 				sub_limit_date: e.sub_limit_date,
 				price: e.price,
 				description: e.description,
+				files: e.files,
 				type: e.type
 			});
 
