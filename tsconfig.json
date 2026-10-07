@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
-    // General
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
 
-    // Modules
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "isolatedModules": true,
@@ -13,8 +12,9 @@
     "moduleResolution": "bundler",
     "noEmit": true,
 
-    // Type Checking & Safety
     "strict": true,
-    "types": ["vite/client"]
-  }
+    "skipLibCheck": true,
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src", "e2e", "vite.config.ts", "capacitor.config.ts", "playwright.config.ts"]
 }
