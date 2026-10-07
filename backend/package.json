@@ -1,20 +1,30 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
+  "name": "scman-backend",
+  "version": "0.8.0",
+  "private": true,
   "main": "index.js",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\"",
+    "create-user": "node scripts/create-user.js",
+    "check-db": "node scripts/check-db.js",
+    "seed-dev": "node scripts/seed-dev.js"
+  },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^10.0.0",
-    "@fastify/static": "^9.1.1",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^12.5.0",
     "dotenv": "^17.2.4",
     "fastify": "^5.6.2",
     "firebase-admin": "^13.6.0",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.1.1",
     "node-cron": "^4.2.1",
     "uuid": "^13.0.0"
   }

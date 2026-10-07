@@ -1,5 +1,4 @@
 node_modules/
-yarn.lock
 dist/
 icons/
 
@@ -12,3 +11,7 @@ backend/serviceAccountKey.json
 backend/uploads/
 
 .env
+
+playwright-report/
+test-results/
+.e2e/
