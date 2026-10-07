@@ -52,7 +52,7 @@ export const Dialog: ParentComponent<{
 						</div>
 						<div class='min-h-0 flex-1 overflow-y-auto px-5 pb-5'>{props.children}</div>
 						<Show when={props.footer}>
-							<div class='pb-safe shrink-0 border-t border-border bg-surface px-5 py-3'>
+							<div class='shrink-0 border-t border-border bg-surface px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]'>
 								<div class='flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'>{props.footer}</div>
 							</div>
 						</Show>

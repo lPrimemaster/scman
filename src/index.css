@@ -110,11 +110,12 @@
 	}
 }
 
-/* Safe areas for the native app and installed PWA */
-.pb-safe {
+/* Safe areas for the native app and installed PWA. Registered as utilities so they
+   don't silently override other padding utilities on the same element. */
+@utility pb-safe {
 	padding-bottom: env(safe-area-inset-bottom);
 }
-.pt-safe {
+@utility pt-safe {
 	padding-top: env(safe-area-inset-top);
 }
 

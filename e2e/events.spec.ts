@@ -69,6 +69,11 @@ test('a cpt athlete creates a CPT race without price or change limit fields', as
 	await expect(form.getByLabel('Custo (€)')).toHaveCount(0);
 	await expect(form.getByLabel('Máximo de alterações')).toHaveCount(0);
 
+	// The footer keeps its bottom padding (it used to collapse to the safe-area inset, 0)
+	const formBox = (await form.boundingBox())!;
+	const submitBox = (await form.getByRole('button', { name: 'Criar prova' }).boundingBox())!;
+	expect(formBox.y + formBox.height - (submitBox.y + submitBox.height)).toBeGreaterThanOrEqual(12);
+
 	await form.getByLabel('Nome').fill(name);
 	await form.getByLabel('Local').fill('Amora');
 	await expect(form.getByLabel('Fim')).toHaveCount(0);
