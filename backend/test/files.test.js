@@ -55,7 +55,10 @@ test('download links expire and are tamper proof', async () => {
 	const up = await upload(admin);
 	const { url } = (await t.request(fed, 'GET', `/api/files/${up.body.handle}/link`)).body;
 
-	assert.equal((await t.app.inject({ method: 'GET', url: url.replace(/sig=./, 'sig=0') })).statusCode, 403);
+	// Change the first signature digit to a different one
+	const tampered = url.replace(/sig=(.)/, (_, c) => `sig=${c === '0' ? '1' : '0'}`);
+	assert.notEqual(tampered, url);
+	assert.equal((await t.app.inject({ method: 'GET', url: tampered })).statusCode, 403);
 	assert.equal((await t.app.inject({ method: 'GET', url: url.replace(/sig=.*/, 'sig=short') })).statusCode, 403);
 	t.state.now += 61 * 1000;
 	assert.equal((await t.app.inject({ method: 'GET', url })).statusCode, 403);

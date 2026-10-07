@@ -64,6 +64,8 @@ export function defaultRaceDeadline(start, today) {
 	return deadline < today ? today : deadline;
 }
 
+const attendee = ({ full_name, username }) => ({ full_name, username });
+
 export function toEventDto(row) {
 	return {
 		id: row.id,
@@ -129,10 +131,10 @@ export default async function eventRoutes(app, { ctx }) {
 		const not_going = [];
 		const maybe = [];
 		for (const r of repo.responses.byStatus(event.id)) {
-			[not_going, going, maybe][r.status]?.push(r.full_name);
+			[not_going, going, maybe][r.status]?.push(attendee(r));
 		}
 		const roles = OPEN_EVENT_TYPES.includes(event.type) ? null : ['admin', 'federado'];
-		const noanswer = repo.responses.missing(event.id, roles).map((r) => r.full_name);
+		const noanswer = repo.responses.missing(event.id, roles).map(attendee);
 		return { going, not_going, maybe, noanswer };
 	}
 

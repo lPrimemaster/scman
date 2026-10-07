@@ -12,6 +12,7 @@ beforeEach(async () => {
 });
 afterEach(() => t.cleanup());
 
+const names = (list) => list.map((a) => a.full_name);
 const tick = () => new Promise((r) => setImmediate(r));
 
 const body = (o = {}) => ({
@@ -110,13 +111,14 @@ test('responding updates attendance and notifies admins', async () => {
 
 	let detail = (await t.request(fed, 'GET', `/api/events/${id}`)).body;
 	assert.equal(detail.me.status, -1);
-	assert.deepEqual(detail.attendance.noanswer, ['Ana', 'Filipe'], 'only active federated users expected');
+	assert.deepEqual(detail.attendance.noanswer.map((a) => a.username), ['admin', 'fed']);
+	assert.deepEqual(names(detail.attendance.noanswer), ['Ana', 'Filipe'], 'only active federated users expected');
 
 	const res = await t.request(fed, 'PUT', `/api/events/${id}/response`, { status: 1 });
 	assert.equal(res.status, 200);
 	assert.equal((await t.request(fed, 'GET', '/api/events')).body[0].my_status, 1);
 	assert.equal((await t.request(admin, 'GET', '/api/events')).body[0].my_status, -1);
-	assert.deepEqual(res.body.attendance.going, ['Filipe']);
+	assert.deepEqual(res.body.attendance.going, [{ full_name: 'Filipe', username: 'fed' }]);
 	assert.equal(res.body.me.status, 1);
 
 	await tick();
@@ -124,7 +126,7 @@ test('responding updates attendance and notifies admins', async () => {
 	assert.match(t.messaging.sent.at(-1).notification.body, /Filipe .* para "Interessado"/);
 
 	detail = (await t.request(cpt, 'GET', `/api/events/${t.addEvent({ type: 0 })}`)).body;
-	assert.deepEqual(detail.attendance.noanswer, ['Ana', 'Carla', 'Filipe'], 'open events expect everyone');
+	assert.deepEqual(names(detail.attendance.noanswer), ['Ana', 'Carla', 'Filipe'], 'open events expect everyone');
 });
 
 test('change limit: initial answer plus change_limit changes', async () => {

@@ -36,7 +36,7 @@ test('answering an event updates the participants list', async ({ page, request 
 	await dialog.getByRole('button', { name: /^Disponível$/ }).click();
 	await expect(page.getByText('Resposta registada.')).toBeVisible();
 	await expect(dialog.getByRole('button', { name: /^Disponível$/ })).toHaveAttribute('aria-pressed', 'true');
-	await expect(dialog.getByRole('tabpanel')).toContainText(`Teste ${username}`);
+	await expect(dialog.getByRole('tabpanel')).toContainText(`Teste ${username} (${username})`);
 	await expect(dialog.getByRole('button', { name: 'Google Calendar' })).toBeVisible();
 
 	// Back button closes the dialog; the list shows the new status

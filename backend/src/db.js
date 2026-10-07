@@ -272,14 +272,14 @@ export function createRepo(db) {
 				`).run(userId, eventId, status),
 			byStatus: (eventId) =>
 				q(`
-					select u.full_name, r.status from responses r join users u on u.id = r.user_id
+					select u.full_name, u.username, r.status from responses r join users u on u.id = r.user_id
 					where r.event_id = ? order by u.full_name collate nocase
 				`).all(eventId),
 			// Active, enabled users (optionally restricted to roles) who have not answered
 			missing: (eventId, roles) => {
 				const roleClause = roles ? ` and u.role in (${roles.map(() => '?').join(', ')})` : '';
 				return q(`
-					select u.full_name from users u
+					select u.full_name, u.username from users u
 					left join responses r on u.id = r.user_id and r.event_id = ?
 					left join account_disabled ad on ad.user_id = u.id
 					where r.user_id is null and u.active = 1 and ad.user_id is null${roleClause}

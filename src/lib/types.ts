@@ -41,11 +41,16 @@ export type SimilarRace = EventItem & { score: number };
 /** Races added by athletes last a single day: the server sets `end` to `start`. */
 export type RaceInput = Pick<EventItem, 'name' | 'location' | 'start' | 'sub_limit_date' | 'description'>;
 
+export interface Attendee {
+	full_name: string;
+	username: string;
+}
+
 export interface Attendance {
-	going: string[];
-	not_going: string[];
-	maybe: string[];
-	noanswer: string[];
+	going: Attendee[];
+	not_going: Attendee[];
+	maybe: Attendee[];
+	noanswer: Attendee[];
 }
 
 export interface MyEventState {
