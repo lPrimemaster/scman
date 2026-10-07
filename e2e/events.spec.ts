@@ -1,18 +1,25 @@
 import { expect, test } from '@playwright/test';
 import { createActiveUser, login, unique, USERS } from './helpers';
 
-test('federated users see upcoming federated events, not past ones', async ({ page }) => {
+test('federated users see federated and open events, not past ones', async ({ page }) => {
 	await login(page, USERS.fed);
 	await expect(page.getByRole('heading', { name: 'Próximas provas federadas' })).toBeVisible();
 	await expect(page.getByRole('button', { name: /Volta ao Alentejo/ })).toBeVisible();
 	await expect(page.getByRole('button', { name: /Estágio Federado Algarve/ })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Próximas provas CPT' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Prova CPT Seixal/ })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Estágio Aberto Serra/ })).toBeVisible();
 	await expect(page.getByText('Prova Antiga')).toHaveCount(0);
 });
 
-test('cpt users get no federated lists on the home page', async ({ page }) => {
+test('cpt users see open events but no federated lists on the home page', async ({ page }) => {
 	await login(page, USERS.cpt);
+	await expect(page.getByRole('heading', { name: 'Próximas provas CPT' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Próximos estágios abertos' })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Prova CPT Seixal/ })).toBeVisible();
+	await expect(page.getByRole('button', { name: /Estágio Aberto Serra/ })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Próximas provas federadas' })).toHaveCount(0);
-	await expect(page.getByText('Consulta os eventos no calendário.')).toBeVisible();
+	await expect(page.getByText('Volta ao Alentejo')).toHaveCount(0);
 });
 
 test('answering an event updates the participants list', async ({ page, request }, info) => {

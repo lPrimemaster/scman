@@ -1,4 +1,4 @@
-import { createResource, createSignal, Show, type Component } from 'solid-js';
+import { createResource, createSignal, For, Show, type Component } from 'solid-js';
 import { api } from '../lib/api';
 import type { EventType } from '../lib/types';
 import { useSession } from '../lib/session';
@@ -41,36 +41,38 @@ const UpcomingSection: Component<{ title: string; type: EventType; emptyText: st
 	);
 };
 
+interface HomeSection {
+	title: string;
+	type: EventType;
+	emptyText: string;
+}
+
+const FEDERATED_SECTIONS: HomeSection[] = [
+	{ title: 'Próximas provas federadas', type: 2, emptyText: 'Sem provas federadas agendadas.' },
+	{ title: 'Próximos estágios federados', type: 3, emptyText: 'Sem estágios federados agendados.' }
+];
+
+// Visible to every role
+const OPEN_SECTIONS: HomeSection[] = [
+	{ title: 'Próximas provas CPT', type: 0, emptyText: 'Sem provas CPT agendadas.' },
+	{ title: 'Próximos estágios abertos', type: 1, emptyText: 'Sem estágios abertos agendados.' }
+];
+
 export const Home: Component = () => {
 	const session = useSession();
 	const firstName = () => session.user()?.full_name.split(' ')[0];
+	const sections = () => (isFederated(session.role()) ? [...FEDERATED_SECTIONS, ...OPEN_SECTIONS] : OPEN_SECTIONS);
 
 	return (
 		<>
 			<PageHeader title={`Olá, ${firstName() ?? ''}`} subtitle='Próximos eventos do clube.' />
-			<Show
-				when={isFederated(session.role())}
-				fallback={
-					<Card>
-						<EmptyState icon='calendar' title='Consulta os eventos no calendário.'>
-							Os teus eventos estão disponíveis no separador Calendário.
-						</EmptyState>
-					</Card>
-				}
-			>
-				<div class='flex flex-col gap-5'>
-					<UpcomingSection
-						title='Próximas provas federadas'
-						type={2}
-						emptyText='Sem provas federadas agendadas.'
-					/>
-					<UpcomingSection
-						title='Próximos estágios federados'
-						type={3}
-						emptyText='Sem estágios federados agendados.'
-					/>
-				</div>
-			</Show>
+			<div class='flex flex-col gap-5'>
+				<For each={sections()}>
+					{(section) => (
+						<UpcomingSection title={section.title} type={section.type} emptyText={section.emptyText} />
+					)}
+				</For>
+			</div>
 		</>
 	);
 };
