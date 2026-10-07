@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { changesLeftLabel, deadlineState, formatPrice, responseBlockReason } from './events';
+import {
+	canQuickAnswer,
+	changesLeftLabel,
+	deadlineState,
+	formatPrice,
+	mapsUrl,
+	pendingEvents,
+	responseBlockReason
+} from './events';
 import { autoUsername } from './username';
-import type { MyEventState } from './types';
+import type { EventItem, MyEventState } from './types';
 
 const me = (o: Partial<MyEventState> = {}): MyEventState => ({
 	status: -1,
@@ -45,5 +53,50 @@ describe('event helpers', () => {
 		expect(autoUsername('João Pedro Gonçalves')).toBe('j.goncalves');
 		expect(autoUsername('  Ana   Sá ')).toBe('a.sa');
 		expect(autoUsername('Madonna')).toBe('');
+	});
+});
+
+describe('pending events and quick answers', () => {
+	const now = new Date('2026-10-07T12:00:00Z');
+	const ev = (o: Partial<EventItem>): EventItem => ({
+		id: 1,
+		name: 'E',
+		location: 'L',
+		start: '2026-10-20',
+		end: '2026-10-20',
+		sub_limit_date: '2026-10-15',
+		change_limit: 2,
+		type: 0,
+		price: '0',
+		description: '',
+		files: [],
+		my_status: -1,
+		my_changes_left: 3,
+		...o
+	});
+
+	it('lists unanswered events with an open deadline, closest deadline first', () => {
+		const list = pendingEvents(
+			[
+				ev({ id: 1, sub_limit_date: '2026-10-20' }),
+				ev({ id: 2, sub_limit_date: '2026-10-09' }),
+				ev({ id: 3, my_status: 1 }),
+				ev({ id: 4, sub_limit_date: '2026-10-01' })
+			],
+			now
+		);
+		expect(list.map((e) => e.id)).toEqual([2, 1]);
+	});
+
+	it('offers quick answers only while the deadline is open and changes are left', () => {
+		expect(canQuickAnswer(ev({}), now)).toBe(true);
+		expect(canQuickAnswer(ev({ my_changes_left: 0 }), now)).toBe(false);
+		expect(canQuickAnswer(ev({ sub_limit_date: '2026-10-06' }), now)).toBe(false);
+	});
+
+	it('builds a maps link for the location', () => {
+		expect(mapsUrl('Serra da Estrela')).toBe(
+			'https://www.google.com/maps/search/?api=1&query=Serra%20da%20Estrela'
+		);
 	});
 });

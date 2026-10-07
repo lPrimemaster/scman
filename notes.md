@@ -1,4 +1,4 @@
-- [ ] Status for each athlete on the listing
-- [ ] Browser notifications
+- [x] Status for each athlete on the listing
+- [x] Browser notifications (Web Push, installable PWA)
 - [ ] Payments (backend + UI behind VITE_ENABLE_PAYMENTS)
 - [x] Refactor code (code base is no longer a toy)

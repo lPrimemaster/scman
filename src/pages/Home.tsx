@@ -22,7 +22,7 @@ const UpcomingSection: ParentComponent<{ title: string; type: EventType; emptyTe
 	const visible = () => (expanded() ? events() : events()?.slice(0, PREVIEW_COUNT)) ?? [];
 
 	return (
-		<Card>
+		<Card label={props.title}>
 			<SectionHeader title={props.title}>
 				<div class='flex items-center gap-3'>
 					<Show when={(events()?.length ?? 0) > 0}>
@@ -56,7 +56,7 @@ const PendingSection: Component = () => {
 
 	return (
 		<Show when={pending().length > 0}>
-			<Card class='border-accent/40'>
+			<Card class='border-accent/40' label='Por responder'>
 				<SectionHeader title='Por responder' subtitle='Responde antes do prazo de inscrição.'>
 					<span class='rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-semibold text-accent-strong tabular-nums'>
 						{pending().length}

@@ -1,14 +1,23 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { createActiveUser, login, unique, USERS } from './helpers';
+
+/** A home page card (event lists repeat: "Por responder" plus one card per type). */
+const card = (page: Page, title: string) => page.getByRole('region', { name: title });
 
 test('federated users see federated and open events, not past ones', async ({ page }) => {
 	await login(page, USERS.fed);
 	await expect(page.getByRole('heading', { name: 'Próximas provas federadas' })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Volta ao Alentejo/ })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Estágio Federado Algarve/ })).toBeVisible();
+	await expect(
+		card(page, 'Próximas provas federadas').getByRole('button', { name: /Volta ao Alentejo/ })
+	).toBeVisible();
+	await expect(
+		card(page, 'Próximos estágios federados').getByRole('button', { name: /Estágio Federado Algarve/ })
+	).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Próximas provas CPT' })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Prova CPT Seixal/ })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Estágio Aberto Serra/ })).toBeVisible();
+	await expect(card(page, 'Próximas provas CPT').getByRole('button', { name: /Prova CPT Seixal/ })).toBeVisible();
+	await expect(
+		card(page, 'Próximos estágios abertos').getByRole('button', { name: /Estágio Aberto Serra/ })
+	).toBeVisible();
 	await expect(page.getByText('Prova Antiga')).toHaveCount(0);
 });
 
@@ -16,8 +25,10 @@ test('cpt users see open events but no federated lists on the home page', async 
 	await login(page, USERS.cpt);
 	await expect(page.getByRole('heading', { name: 'Próximas provas CPT' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Próximos estágios abertos' })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Prova CPT Seixal/ })).toBeVisible();
-	await expect(page.getByRole('button', { name: /Estágio Aberto Serra/ })).toBeVisible();
+	await expect(card(page, 'Próximas provas CPT').getByRole('button', { name: /Prova CPT Seixal/ })).toBeVisible();
+	await expect(
+		card(page, 'Próximos estágios abertos').getByRole('button', { name: /Estágio Aberto Serra/ })
+	).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Próximas provas federadas' })).toHaveCount(0);
 	await expect(page.getByText('Volta ao Alentejo')).toHaveCount(0);
 });
@@ -28,7 +39,8 @@ test('answering an event updates the participants list', async ({ page, request 
 	await createActiveUser(request, username);
 	await login(page, username);
 
-	await page.getByRole('button', { name: /Volta ao Alentejo/ }).click();
+	const races = card(page, 'Próximas provas federadas');
+	await races.getByRole('button', { name: /Volta ao Alentejo/ }).click();
 	const dialog = page.getByRole('dialog', { name: 'Volta ao Alentejo' });
 	await expect(dialog).toBeVisible();
 	await expect(dialog.getByText('Évora').first()).toBeVisible();
@@ -42,7 +54,8 @@ test('answering an event updates the participants list', async ({ page, request 
 	// Back button closes the dialog; the list shows the new status
 	await page.goBack();
 	await expect(dialog).toBeHidden();
-	await expect(page.getByRole('button', { name: /Volta ao Alentejo/ })).toContainText('Disponível');
+	await expect(races.getByRole('button', { name: /Volta ao Alentejo/ })).toContainText('Disponível');
+	await expect(card(page, 'Por responder').getByText('Volta ao Alentejo')).toHaveCount(0, { timeout: 5000 });
 });
 
 test('calendar shows events and opens the detail', async ({ page }) => {
@@ -86,7 +99,7 @@ test('a cpt athlete creates a CPT race without price or change limit fields', as
 	await expect(detail).toBeVisible();
 	await expect(detail.getByText('Prova CPT').first()).toBeVisible();
 	await page.keyboard.press('Escape');
-	await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible();
+	await expect(card(page, 'Próximas provas CPT').getByRole('button', { name: new RegExp(name) })).toBeVisible();
 });
 
 test('creating a race suggests an existing one with a similar name', async ({ page }) => {

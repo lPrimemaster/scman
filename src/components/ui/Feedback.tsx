@@ -1,4 +1,4 @@
-import { Show, type JSX, type ParentComponent } from 'solid-js';
+import { Show, type ParentComponent } from 'solid-js';
 import { cx } from './cx';
 import { Icon, type IconName } from './Icon';
 
@@ -68,8 +68,11 @@ export const Notice: ParentComponent<{ tone?: Tone; icon?: IconName; class?: str
 	</div>
 );
 
-export const Card: ParentComponent<{ class?: string } & JSX.HTMLAttributes<HTMLElement>> = (props) => (
-	<section class={cx('rounded-2xl border border-border bg-surface', props.class)}>{props.children}</section>
+/** `label` names the card as a landmark region (useful when similar cards repeat on a page). */
+export const Card: ParentComponent<{ class?: string; label?: string }> = (props) => (
+	<section aria-label={props.label} class={cx('rounded-2xl border border-border bg-surface', props.class)}>
+		{props.children}
+	</section>
 );
 
 export const SectionHeader: ParentComponent<{ title: string; subtitle?: string }> = (props) => (

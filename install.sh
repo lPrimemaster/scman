@@ -24,11 +24,6 @@ fi
 
 rm -rf "$BACKEND_DIR/src"
 cp -r node_modules/ index.js src/ scripts/ package.json "$BACKEND_DIR"
-
-# Firebase service account for push notifications (optional)
-if [ -f serviceAccountKey.json ]; then
-	cp serviceAccountKey.json "$BACKEND_DIR"
-fi
 popd
 
 chown -R www-data:www-data "$BACKEND_DIR"
