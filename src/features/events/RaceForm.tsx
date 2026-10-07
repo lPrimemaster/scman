@@ -4,7 +4,7 @@ import type { EventItem, RaceInput } from '../../lib/types';
 import { api, ApiError } from '../../lib/api';
 import { addDays, todayISO } from '../../lib/dates';
 import { createDebounced } from '../../lib/debounce';
-import { MEMBER_RACE } from '../../lib/events';
+import { MEMBER_RACE, normalizeName } from '../../lib/events';
 import { invalidateEvents } from '../../lib/eventsBus';
 import { toast } from '../../lib/toast';
 import { Dialog } from '../../components/ui/Dialog';
@@ -46,6 +46,11 @@ export const RaceFormDialog: Component<{
 	const [similar] = createResource(lookup, (params) => api.events.similarRaces(params).catch(() => []));
 	// Keep showing the previous suggestions while a new lookup is in flight
 	const suggestions = () => (lookup() ? (similar.latest ?? []) : []);
+	// Names must be unique: compare against the current input, not the (debounced) query
+	const sameName = () => {
+		const name = normalizeName(form.name);
+		return name ? suggestions().find((race) => normalizeName(race.name) === name) : undefined;
+	};
 
 	function setStart(start: string) {
 		setForm('start', start);
@@ -54,6 +59,7 @@ export const RaceFormDialog: Component<{
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
+		if (sameName()) return;
 		setSaving(true);
 		try {
 			const saved = await api.events.createRace(form);
@@ -82,7 +88,7 @@ export const RaceFormDialog: Component<{
 			footer={
 				<>
 					<Button onClick={props.onClose}>Cancelar</Button>
-					<Button type='submit' form='race-form' variant='primary' loading={saving()}>
+					<Button type='submit' form='race-form' variant='primary' loading={saving()} disabled={!!sameName()}>
 						Criar prova
 					</Button>
 				</>
@@ -93,6 +99,7 @@ export const RaceFormDialog: Component<{
 					value={form.name}
 					onInput={(name) => setForm('name', name)}
 					suggestions={suggestions()}
+					sameName={sameName()}
 					onPick={(race) => props.onOpenExisting(race.id)}
 				/>
 				<Field label='Local' class='sm:col-span-2'>

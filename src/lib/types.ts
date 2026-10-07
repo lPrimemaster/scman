@@ -36,7 +36,8 @@ export interface EventItem {
 
 export type EventInput = Omit<EventItem, 'id' | 'my_status'>;
 
-export type SimilarRace = EventItem & { score: number };
+/** `exact`: same name, which cannot be created again */
+export type SimilarRace = EventItem & { score: number; exact: boolean };
 
 /** Races added by athletes last a single day: the server sets `end` to `start`. */
 export type RaceInput = Pick<EventItem, 'name' | 'location' | 'start' | 'sub_limit_date' | 'description'>;

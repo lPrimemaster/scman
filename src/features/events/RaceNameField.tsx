@@ -10,6 +10,8 @@ export const RaceNameField: Component<{
 	value: string;
 	onInput: (value: string) => void;
 	suggestions: SimilarRace[];
+	/** An existing race with exactly this name: creating it again is not allowed */
+	sameName?: SimilarRace;
 	onPick: (race: SimilarRace) => void;
 }> = (props) => {
 	const [focused, setFocused] = createSignal(false);
@@ -36,63 +38,90 @@ export const RaceNameField: Component<{
 	}
 
 	return (
-		<Field label='Nome' class='sm:col-span-2'>
-			<div class='relative'>
-				<Input
-					name='name'
-					role='combobox'
-					autocomplete='off'
-					aria-autocomplete='list'
-					aria-expanded={open()}
-					aria-controls='race-suggestions'
-					aria-activedescendant={open() && active() >= 0 ? `race-suggestion-${active()}` : undefined}
-					value={props.value}
-					onInput={(e) => {
-						setDismissed(false);
-						setActive(-1);
-						props.onInput(e.currentTarget.value);
-					}}
-					onFocus={() => setFocused(true)}
-					onBlur={() => setFocused(false)}
-					on:keydown={onKeyDown}
-					required
-				/>
-				<Show when={open()}>
-					<div class='absolute inset-x-0 top-full z-20 mt-1.5 overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-[fade_120ms_ease-out]'>
-						<p class='flex items-center gap-1.5 px-3 pt-2.5 pb-1 text-xs font-medium text-warning'>
-							<Icon name='flag' class='size-3.5' />
-							Esta prova já existe?
-						</p>
-						<ul id='race-suggestions' role='listbox' aria-label='Provas existentes' class='pb-1.5'>
-							<For each={props.suggestions}>
-								{(race, i) => (
-									<li
-										id={`race-suggestion-${i()}`}
-										role='option'
-										aria-selected={active() === i()}
-										class={cx(
-											'flex cursor-pointer items-center justify-between gap-3 px-3 py-2',
-											active() === i() ? 'bg-surface-2' : 'hover:bg-surface-2'
-										)}
-										// Keep the input focused so the click is not lost to blur
-										onMouseDown={(e) => e.preventDefault()}
-										onMouseEnter={() => setActive(i())}
-										onClick={() => props.onPick(race)}
-									>
-										<span class='min-w-0'>
-											<span class='block truncate text-sm font-medium text-fg'>{race.name}</span>
-											<span class='block truncate text-xs text-fg-muted'>
-												{formatRange(race.start, race.end)} · {race.location}
+		<div class='flex flex-col gap-1.5 sm:col-span-2'>
+			<Field label='Nome'>
+				<div class='relative'>
+					<Input
+						name='name'
+						role='combobox'
+						autocomplete='off'
+						aria-autocomplete='list'
+						aria-expanded={open()}
+						aria-controls='race-suggestions'
+						aria-activedescendant={open() && active() >= 0 ? `race-suggestion-${active()}` : undefined}
+						value={props.value}
+						onInput={(e) => {
+							setDismissed(false);
+							setActive(-1);
+							props.onInput(e.currentTarget.value);
+						}}
+						onFocus={() => setFocused(true)}
+						onBlur={() => setFocused(false)}
+						on:keydown={onKeyDown}
+						aria-invalid={props.sameName ? 'true' : undefined}
+						aria-describedby={props.sameName ? 'race-name-error' : undefined}
+						required
+					/>
+					<Show when={open()}>
+						<div class='absolute inset-x-0 top-full z-20 mt-1.5 overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-[fade_120ms_ease-out]'>
+							<p class='flex items-center gap-1.5 px-3 pt-2.5 pb-1 text-xs font-medium text-warning'>
+								<Icon name='flag' class='size-3.5' />
+								{props.sameName ? 'Já existe uma prova com este nome' : 'Esta prova já existe?'}
+							</p>
+							<ul id='race-suggestions' role='listbox' aria-label='Provas existentes' class='pb-1.5'>
+								<For each={props.suggestions}>
+									{(race, i) => (
+										<li
+											id={`race-suggestion-${i()}`}
+											role='option'
+											aria-selected={active() === i()}
+											class={cx(
+												'flex cursor-pointer items-center justify-between gap-3 px-3 py-2',
+												active() === i() ? 'bg-surface-2' : 'hover:bg-surface-2'
+											)}
+											// Keep the input focused so the click is not lost to blur
+											onMouseDown={(e) => e.preventDefault()}
+											onMouseEnter={() => setActive(i())}
+											onClick={() => props.onPick(race)}
+										>
+											<span class='min-w-0'>
+												<span class='block truncate text-sm font-medium text-fg'>
+													{race.name}
+												</span>
+												<span class='block truncate text-xs text-fg-muted'>
+													{formatRange(race.start, race.end)} · {race.location}
+												</span>
 											</span>
-										</span>
-										<span class='shrink-0 text-xs font-medium text-accent'>Ver</span>
-									</li>
-								)}
-							</For>
-						</ul>
-					</div>
-				</Show>
-			</div>
-		</Field>
+											<span class='flex shrink-0 items-center gap-2 text-xs font-medium'>
+												<Show when={race.id === props.sameName?.id}>
+													<span class='rounded-full bg-danger-soft px-2 py-0.5 text-danger'>
+														Mesmo nome
+													</span>
+												</Show>
+												<span class='text-accent'>Ver</span>
+											</span>
+										</li>
+									)}
+								</For>
+							</ul>
+						</div>
+					</Show>
+				</div>
+			</Field>
+			<Show when={props.sameName}>
+				{(race) => (
+					<p id='race-name-error' role='alert' class='text-xs text-danger'>
+						Já existe uma prova com este nome.{' '}
+						<button
+							type='button'
+							class='cursor-pointer font-medium underline underline-offset-2'
+							onClick={() => props.onPick(race())}
+						>
+							Ver “{race().name}”
+						</button>
+					</p>
+				)}
+			</Show>
+		</div>
 	);
 };

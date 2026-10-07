@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isSameRace, nameSimilarity, normalizeText, raceMatchScore, tokens } from '../src/lib/similarity.js';
+import { isSameName, nameSimilarity, normalizeText, raceMatchScore, tokens } from '../src/lib/similarity.js';
 
 const THRESHOLD = 0.45;
 
@@ -35,8 +35,22 @@ test('race score: only given fields count, a close date raises it', () => {
 	assert.ok(near > far);
 });
 
-test('isSameRace compares the normalized name and the start date', () => {
-	const a = { name: 'Prova do Seixal', start: '2026-10-17' };
-	assert.ok(isSameRace(a, { name: 'prova do seixal ', start: '2026-10-17' }));
-	assert.ok(!isSameRace(a, { name: 'Prova do Seixal', start: '2026-10-18' }));
+test('isSameName ignores case, accents, punctuation and spacing', () => {
+	assert.ok(isSameName('Prova do Seixal', ' prova  do SEIXAL!'));
+	assert.ok(isSameName('Taça Évora', 'taca evora'));
+	assert.ok(!isSameName('Prova do Seixal', 'Prova do Seixal 2'));
+	assert.ok(!isSameName('', ''));
+});
+
+test('names made only of generic words still match', () => {
+	// "cpt" and "prova" are generic words, so these used to have nothing to compare
+	assert.equal(nameSimilarity('cpt', 'CPT'), 1);
+	assert.ok(nameSimilarity('Prova 1', 'prova 1') === 1);
+	assert.ok(nameSimilarity('Prova CPT', 'Prova CPT Moita') < THRESHOLD, 'generic words alone are not a match');
+});
+
+test('partial input and typos match', () => {
+	assert.ok(nameSimilarity('Prova CPT Seixal', 'Sei') >= THRESHOLD);
+	assert.ok(nameSimilarity('Prova CPT Seixal', 'Seixl') >= THRESHOLD);
+	assert.ok(nameSimilarity('Prova CPT Moita', 'Prova CPT Barreiro') < THRESHOLD);
 });

@@ -243,8 +243,11 @@ export function createRepo(db) {
 					e.files,
 					id
 				),
-			upcomingOfType: (type, today) =>
-				q('select * from events where type = ? and end >= ? order by start asc').all(type, today),
+			// Not yet finished, of the given types
+			upcomingOfTypes: (types, today) =>
+				q(
+					`select * from events where type in (${types.map(() => '?').join(', ')}) and end >= ? order by start asc`
+				).all(...types, today),
 			hasPayments: (id) => !!q('select 1 from payments where event_id = ?').get(id),
 			// better-sqlite3 enforces foreign keys: drop rows referencing the event first
 			remove: (id) => {

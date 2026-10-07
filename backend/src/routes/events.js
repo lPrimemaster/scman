@@ -1,7 +1,7 @@
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { parseEventFiles, serializeEventFiles } from '../lib/eventFiles.js';
 import { addDaysISO, isDeadlinePassed, todayISO } from '../lib/dates.js';
-import { isSameRace, raceMatchScore } from '../lib/similarity.js';
+import { isSameName, raceMatchScore } from '../lib/similarity.js';
 import { canSeeEventType, EVENT_TYPES, OPEN_EVENT_TYPES, visibleEventTypes } from '../lib/roles.js';
 
 export const RESPONSE_STATUS = { NOT_GOING: 0, GOING: 1, MAYBE: 2 };
@@ -235,21 +235,28 @@ export default async function eventRoutes(app, { ctx }) {
 			}
 		},
 		async (req) => {
+			// Exact names first (they cannot be created again), then the closest matches
 			return repo.events
-				.upcomingOfType(MEMBER_RACE.type, todayISO(now()))
-				.map((row) => ({ row, score: raceMatchScore(row, req.query) }))
-				.filter((m) => m.score >= SIMILAR_RACES.minScore)
-				.sort((a, b) => b.score - a.score)
+				.upcomingOfTypes(visibleEventTypes(req.user.role), todayISO(now()))
+				.map((row) => {
+					const exact = isSameName(row.name, req.query.name);
+					return { row, exact, score: exact ? 1 : raceMatchScore(row, req.query) };
+				})
+				.filter((m) => m.exact || m.score >= SIMILAR_RACES.minScore)
+				.sort((a, b) => Number(b.exact) - Number(a.exact) || b.score - a.score)
 				.slice(0, SIMILAR_RACES.limit)
-				.map(({ row, score }) => ({ ...toEventDto(row), score: Math.round(score * 100) / 100 }));
+				.map(({ row, exact, score }) => ({ ...toEventDto(row), exact, score: Math.round(score * 100) / 100 }));
 		}
 	);
 
 	app.post('/races', { preHandler: authenticate, schema: { body: memberRaceBody } }, async (req) => {
 		const today = todayISO(now());
 		const { start } = req.body;
-		const existing = repo.events.upcomingOfType(MEMBER_RACE.type, today).find((row) => isSameRace(row, req.body));
-		if (existing) throw conflict('Race already exists.', { existingId: existing.id });
+		// Names are unique among events that have not finished yet
+		const existing = repo.events
+			.upcomingOfTypes(visibleEventTypes(req.user.role), today)
+			.find((row) => isSameName(row.name, req.body.name));
+		if (existing) throw conflict('A race with this name already exists.', { existingId: existing.id });
 		const sub_limit_date = req.body.sub_limit_date ?? defaultRaceDeadline(start, today);
 		if (start < today) throw badRequest('Start date is in the past.');
 		if (req.body.end && req.body.end !== start) throw badRequest('Races last a single day.');

@@ -243,17 +243,36 @@ test('similar races: upcoming CPT races only, best first, at most 3', async () =
 	assert.equal((await t.request(null, 'GET', '/api/events/races/similar?name=Seixal')).status, 401);
 });
 
-test('creating an exact duplicate race returns the existing one', async () => {
+test('race names are unique among unfinished events, whatever the date', async () => {
 	const first = await t.request(cpt, 'POST', '/api/events/races', race({ name: 'Prova do Seixal' }));
-	const dup = await t.request(fed, 'POST', '/api/events/races', race({ name: ' prova do SEIXAL' }));
-	assert.equal(dup.status, 409);
-	assert.equal(dup.body.existingId, first.body.id);
+	for (const body of [race({ name: ' prova do SEIXAL' }), race({ name: 'Prova do Seixal', start: iso(30) })]) {
+		const dup = await t.request(fed, 'POST', '/api/events/races', body);
+		assert.equal(dup.status, 409);
+		assert.equal(dup.body.existingId, first.body.id);
+	}
+	// A finished event with the same name does not block (yearly races)
+	t.addEvent({ name: 'Volta Antiga', type: 0, start: iso(-30), end: iso(-30) });
+	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ name: 'Volta Antiga' }))).status, 200);
+	// Similar names are only suggestions
+	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ name: 'Prova do Seixal 2' }))).status, 200);
+});
 
-	const otherDay = await t.request(
-		fed,
-		'POST',
-		'/api/events/races',
-		race({ name: 'Prova do Seixal', start: iso(21) })
+test('similar races flag exact names first and cover every visible type', async () => {
+	const camp = t.addEvent({ name: 'cpt', type: 1, start: iso(5), end: iso(5) });
+	t.addEvent({ name: 'Volta Seixal', type: 2, start: iso(5), end: iso(5) });
+
+	const res = await t.request(cpt, 'GET', '/api/events/races/similar?name=CPT');
+	assert.equal(res.body[0].id, camp);
+	assert.equal(res.body[0].exact, true);
+	assert.ok(
+		res.body.every((e) => e.type < 2),
+		'cpt athletes only see open types'
 	);
-	assert.equal(otherDay.status, 200);
+
+	assert.deepEqual((await t.request(cpt, 'GET', '/api/events/races/similar?name=Seixal')).body, []);
+	const fedRes = await t.request(fed, 'GET', '/api/events/races/similar?name=Seixal');
+	assert.ok(
+		fedRes.body.some((e) => e.type === 2 && !e.exact),
+		'federados also see federated races'
+	);
 });

@@ -113,3 +113,31 @@ test('creating a race suggests an existing one with a similar name', async ({ pa
 	await expect(page.getByRole('dialog', { name: 'Prova CPT Seixal' })).toBeVisible();
 	await expect(form).toHaveCount(0);
 });
+
+test('exact race names are blocked, similar ones can still be created', async ({ page }, info) => {
+	const isoIn = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+	await login(page, USERS.cpt);
+	await page.getByRole('button', { name: 'Nova prova' }).click();
+	const form = page.getByRole('dialog', { name: 'Nova prova CPT' });
+	const name = form.getByRole('combobox', { name: 'Nome' });
+	const submit = form.getByRole('button', { name: 'Criar prova' });
+
+	// Partial input already suggests the existing race
+	await name.fill('Sei');
+	await expect(form.getByRole('option', { name: /Prova CPT Seixal/ })).toBeVisible();
+
+	// Same name (ignoring case and accents): blocked, with a link to the existing race
+	await name.fill('prova cpt SEIXAL');
+	await expect(form.getByRole('alert')).toContainText('Já existe uma prova com este nome');
+	await expect(submit).toBeDisabled();
+
+	// A similar name is only a suggestion: it can be ignored
+	const similar = unique(info, 'Noturna do Seixal');
+	await name.fill(similar);
+	await expect(form.getByRole('option', { name: /Prova CPT Seixal/ })).toBeVisible();
+	await expect(submit).toBeEnabled();
+	await form.getByLabel('Local').fill('Seixal');
+	await form.getByLabel('Data').fill(isoIn(26));
+	await submit.click();
+	await expect(page.getByRole('dialog', { name: similar })).toBeVisible();
+});

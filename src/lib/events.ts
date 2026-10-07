@@ -84,3 +84,13 @@ export function deadlineState(event: Pick<EventItem, 'sub_limit_date'>, now = ne
 	if (days <= 3) return 'soon';
 	return 'open';
 }
+
+/** Mirrors `isSameName` in `backend/src/lib/similarity.js`: case, accents, punctuation and spacing don't count. */
+export function normalizeName(name: string) {
+	return name
+		.normalize('NFD')
+		.replace(/\p{M}/gu, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
+}
