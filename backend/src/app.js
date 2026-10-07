@@ -11,14 +11,24 @@ import fileRoutes from './routes/files.js';
 import pushRoutes from './routes/push.js';
 import paymentRoutes from './routes/payments.js';
 import statsRoutes from './routes/stats.js';
+import calendarRoutes from './routes/calendar.js';
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /**
  * Builds the HTTP app. All dependencies are injected so tests can provide fakes.
- * @param {{ repo, push, paypal, storage, secret: string, logger?: boolean, now?: () => number }} deps
+ * @param {{ repo, push, paypal, storage, secret: string, vapidPublicKey?: string, logger?: boolean, now?: () => number }} deps
  */
-export async function buildApp({ repo, push, paypal, storage, secret, logger = false, now = Date.now }) {
+export async function buildApp({
+	repo,
+	push,
+	paypal,
+	storage,
+	secret,
+	vapidPublicKey,
+	logger = false,
+	now = Date.now
+}) {
 	const app = Fastify({ logger });
 
 	await app.register(cors, { origin: true });
@@ -37,7 +47,7 @@ export async function buildApp({ repo, push, paypal, storage, secret, logger = f
 		return reply.code(status).send({ ...err.details, error: err.message });
 	});
 
-	const ctx = { repo, push, paypal, storage, secret, now, ...createAuth({ repo, secret }) };
+	const ctx = { repo, push, paypal, storage, secret, vapidPublicKey, now, ...createAuth({ repo, secret }) };
 
 	await app.register(authRoutes, { prefix: '/api/auth', ctx });
 	await app.register(userRoutes, { prefix: '/api/users', ctx });
@@ -47,6 +57,7 @@ export async function buildApp({ repo, push, paypal, storage, secret, logger = f
 	await app.register(pushRoutes, { prefix: '/api/push', ctx });
 	await app.register(paymentRoutes, { prefix: '/api/payments', ctx });
 	await app.register(statsRoutes, { prefix: '/api/stats', ctx });
+	await app.register(calendarRoutes, { prefix: '/api/calendar', ctx });
 
 	return app;
 }

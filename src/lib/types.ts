@@ -32,9 +32,11 @@ export interface EventItem {
 	description: string;
 	files: EventFile[];
 	my_status?: ResponseStatus;
+	/** Answers still allowed (first answer + changes); only in lists */
+	my_changes_left?: number;
 }
 
-export type EventInput = Omit<EventItem, 'id' | 'my_status'>;
+export type EventInput = Omit<EventItem, 'id' | 'my_status' | 'my_changes_left'>;
 
 /** `exact`: same name, which cannot be created again */
 export type SimilarRace = EventItem & { score: number; exact: boolean };

@@ -2,7 +2,7 @@ import { createResource, createSignal, Show, type Component, type JSX } from 'so
 import { api, ApiError } from '../../lib/api';
 import type { EventDetail as Detail, ResponseStatus } from '../../lib/types';
 import { formatDate, formatRange, relativeDays } from '../../lib/dates';
-import { EVENT_TYPES, formatPrice } from '../../lib/events';
+import { EVENT_TYPES, formatPrice, mapsUrl } from '../../lib/events';
 import { downloadICS, openGoogleCalendar } from '../../lib/calendarExport';
 import { invalidateEvents } from '../../lib/eventsBus';
 import { toast } from '../../lib/toast';
@@ -15,6 +15,7 @@ import { ResponseControls } from './ResponseControls';
 import { Attachments } from './Attachments';
 import { useEventDialog } from './useEventDialog';
 import { PaymentSection } from '../payments/PaymentSection';
+import { WeatherCard } from './WeatherCard';
 
 const InfoItem: Component<{ icon: IconName; label: string; children: JSX.Element }> = (props) => (
 	<div class='flex items-start gap-3'>
@@ -51,7 +52,16 @@ export const EventDetailContent: Component<{
 					{formatRange(event().start, event().end)}
 				</InfoItem>
 				<InfoItem icon='map-pin' label='Local'>
-					{event().location}
+					<a
+						href={mapsUrl(event().location)}
+						target='_blank'
+						rel='noopener'
+						class='inline-flex items-center gap-1 underline decoration-border underline-offset-4 hover:decoration-fg'
+						aria-label={`${event().location} (abrir no mapa)`}
+					>
+						{event().location}
+						<Icon name='navigation' class='size-3 text-fg-muted' />
+					</a>
 				</InfoItem>
 				<InfoItem icon='clock' label='Inscrições até'>
 					{formatDate(event().sub_limit_date)}{' '}
@@ -65,6 +75,8 @@ export const EventDetailContent: Component<{
 			<Show when={event().description}>
 				<p class='text-sm leading-relaxed whitespace-pre-line text-fg'>{event().description}</p>
 			</Show>
+
+			<WeatherCard location={event().location} start={event().start} end={event().end} />
 
 			<Show when={event().files.length > 0}>
 				<Section title='Anexos'>

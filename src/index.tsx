@@ -14,10 +14,13 @@ import { InvitesPage } from './features/admin/InvitesPage';
 import { UsersPage } from './features/admin/UsersPage';
 import { EventsAdmin } from './features/admin/EventsAdmin';
 import { StatsPage } from './features/admin/StatsPage';
+import { registerServiceWorker } from './lib/pwa';
 
 if (import.meta.env.DEV) {
 	await import('solid-devtools');
 }
+
+registerServiceWorker();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Root element not found.');

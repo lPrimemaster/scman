@@ -3,26 +3,8 @@ import type { EventFile } from '../../lib/types';
 import { api } from '../../lib/api';
 import { toastError } from '../../lib/toast';
 import { Icon } from '../../components/ui/Icon';
-import { Capacitor } from '@capacitor/core';
-
-function openWithAnchor(url: string) {
-	const a = document.createElement('a');
-	a.href = url;
-	a.target = '_blank';
-	a.rel = 'noopener';
-	a.click();
-}
 
 export async function openAttachment(handle: string) {
-	if (Capacitor.isNativePlatform()) {
-		try {
-			openWithAnchor((await api.files.link(handle)).url);
-		} catch (err) {
-			toastError('Não foi possível abrir o anexo.')(err);
-		}
-		return;
-	}
-
 	// Open the window synchronously so popup blockers allow it, then point it at the signed link
 	const win = window.open('', '_blank');
 	try {

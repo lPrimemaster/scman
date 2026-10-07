@@ -2,13 +2,14 @@ import { createResource, createSignal, For, Show, type Component, type ParentCom
 import { api } from '../lib/api';
 import type { EventType } from '../lib/types';
 import { useSession } from '../lib/session';
-import { isFederated } from '../lib/events';
+import { isFederated, pendingEvents } from '../lib/events';
 import { eventsVersion } from '../lib/eventsBus';
 import { Card, EmptyState, PageHeader, PageSpinner, SectionHeader } from '../components/ui/Feedback';
 import { Button } from '../components/ui/Button';
 import { EventList } from '../features/events/EventList';
 import { RaceFormDialog } from '../features/events/RaceForm';
 import { useEventDialog } from '../features/events/useEventDialog';
+import { PushPrompt } from '../features/account/PushPrompt';
 
 const PREVIEW_COUNT = 5;
 
@@ -46,6 +47,34 @@ const UpcomingSection: ParentComponent<{ title: string; type: EventType; emptyTe
 	);
 };
 
+/** Events still waiting for my answer, across every type I can see. Hidden when there are none. */
+const PendingSection: Component = () => {
+	const [expanded, setExpanded] = createSignal(false);
+	const [events] = createResource(eventsVersion, () => api.events.list({ upcoming: true }));
+	const pending = () => pendingEvents(events.latest ?? []);
+	const visible = () => (expanded() ? pending() : pending().slice(0, PREVIEW_COUNT));
+
+	return (
+		<Show when={pending().length > 0}>
+			<Card class='border-accent/40'>
+				<SectionHeader title='Por responder' subtitle='Responde antes do prazo de inscrição.'>
+					<span class='rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-semibold text-accent-strong tabular-nums'>
+						{pending().length}
+					</span>
+				</SectionHeader>
+				<EventList events={visible()} />
+				<Show when={pending().length > PREVIEW_COUNT}>
+					<div class='border-t border-border p-2'>
+						<Button variant='ghost' size='sm' block onClick={() => setExpanded(!expanded())}>
+							{expanded() ? 'Mostrar menos' : `Ver todos (${pending().length})`}
+						</Button>
+					</div>
+				</Show>
+			</Card>
+		</Show>
+	);
+};
+
 interface HomeSection {
 	title: string;
 	type: EventType;
@@ -73,7 +102,9 @@ export const Home: Component = () => {
 	return (
 		<>
 			<PageHeader title={`Olá, ${firstName() ?? ''}`} subtitle='Próximos eventos do clube.' />
+			<PushPrompt />
 			<div class='flex flex-col gap-5'>
+				<PendingSection />
 				<For each={sections()}>
 					{(section) => (
 						<UpcomingSection title={section.title} type={section.type} emptyText={section.emptyText}>

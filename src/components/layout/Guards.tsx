@@ -1,7 +1,7 @@
 import { Navigate } from '@solidjs/router';
 import { Match, onMount, Switch, type ParentComponent } from 'solid-js';
 import { useSession } from '../../lib/session';
-import { registerPush } from '../../lib/push';
+import { syncPush } from '../../lib/push';
 import { PageSpinner } from '../ui/Feedback';
 import { AppShell } from './AppShell';
 import { EventDetailRoute } from '../../features/events/EventDetail';
@@ -10,7 +10,7 @@ import { EventDetailRoute } from '../../features/events/EventDetail';
 export const ProtectedLayout: ParentComponent = (props) => {
 	const session = useSession();
 	onMount(() => {
-		if (session.token()) registerPush();
+		if (session.token()) syncPush();
 	});
 
 	return (

@@ -1,10 +1,11 @@
 import { For, Show, type Component } from 'solid-js';
 import type { EventItem } from '../../lib/types';
 import { formatRange, monthShortOf, parseISODate, formatDayMonth } from '../../lib/dates';
-import { deadlineState, EVENT_TYPES, RESPONSE_LABELS } from '../../lib/events';
+import { canQuickAnswer, deadlineState, EVENT_TYPES, RESPONSE_LABELS } from '../../lib/events';
 import { Badge, EmptyState } from '../../components/ui/Feedback';
 import { Icon } from '../../components/ui/Icon';
 import { useEventDialog } from './useEventDialog';
+import { QuickAnswer } from './QuickAnswer';
 
 export const DateTile: Component<{ iso: string; color?: string }> = (props) => (
 	<div
@@ -41,18 +42,18 @@ export const StatusBadge: Component<{ status?: number }> = (props) => (
 );
 
 export const EventRow: Component<{ event: EventItem; onClick: () => void }> = (props) => (
-	<li>
+	<li class='flex items-center gap-2 pr-3 transition-colors hover:bg-surface-2 sm:pr-4'>
 		<button
-			class='flex w-full cursor-pointer items-center gap-3.5 px-4 py-3 text-left transition-colors hover:bg-surface-2 sm:px-5'
+			class='flex min-w-0 flex-1 cursor-pointer items-center gap-3.5 py-3 pl-4 text-left sm:pl-5'
 			onClick={() => props.onClick()}
 		>
 			<DateTile iso={props.event.start} color={EVENT_TYPES[props.event.type]?.color} />
 			<div class='min-w-0 flex-1'>
 				<p class='truncate font-medium'>{props.event.name}</p>
 				<p class='mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-fg-muted'>
-					<span class='inline-flex items-center gap-1'>
-						<Icon name='map-pin' class='size-3.5' />
-						{props.event.location}
+					<span class='inline-flex min-w-0 items-center gap-1'>
+						<Icon name='map-pin' class='size-3.5 shrink-0' />
+						<span class='truncate'>{props.event.location}</span>
 					</span>
 					<span class='hidden sm:inline'>{formatRange(props.event.start, props.event.end)}</span>
 				</p>
@@ -61,8 +62,13 @@ export const EventRow: Component<{ event: EventItem; onClick: () => void }> = (p
 					<StatusBadge status={props.event.my_status} />
 				</div>
 			</div>
-			<Icon name='chevron-right' class='size-4 shrink-0 text-fg-muted' />
 		</button>
+		<Show
+			when={canQuickAnswer(props.event)}
+			fallback={<Icon name='chevron-right' class='size-4 shrink-0 text-fg-muted' />}
+		>
+			<QuickAnswer event={props.event} />
+		</Show>
 	</li>
 );
 

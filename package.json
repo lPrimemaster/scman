@@ -20,9 +20,6 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.0.0",
-    "@capacitor/ios": "^8.0.1",
     "@eslint/js": "^9.17.0",
     "@playwright/test": "^1.49.0",
     "@solidjs/testing-library": "^0.8.10",
@@ -43,16 +40,11 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@capacitor-firebase/messaging": "^8.0.1",
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
-    "@capacitor/push-notifications": "^8.0.0",
     "@fullcalendar/core": "^6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",
     "@fullcalendar/list": "^6.1.20",
     "@paypal/paypal-js": "^9.2.0",
     "@solidjs/router": "^0.15.4",
-    "firebase": "^12.9.0",
     "solid-js": "^1.9.9"
   }
 }

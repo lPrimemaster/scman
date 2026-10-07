@@ -1,4 +1,4 @@
-import { createEffect, createResource, For, on, onCleanup, onMount, type Component } from 'solid-js';
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, type Component } from 'solid-js';
 import { Calendar as FullCalendar, type EventInput } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import listPlugin from '@fullcalendar/list';
@@ -12,6 +12,8 @@ import { MOBILE_QUERY, useMediaQuery } from '../lib/media';
 import { toastError } from '../lib/toast';
 import { Card, PageHeader } from '../components/ui/Feedback';
 import { useEventDialog } from '../features/events/useEventDialog';
+import { CalendarSubscribeDialog } from '../features/events/CalendarSubscribe';
+import { Button } from '../components/ui/Button';
 
 export function toCalendarEvents(events: EventItem[]): EventInput[] {
 	return events.flatMap((e) => {
@@ -40,6 +42,7 @@ export function toCalendarEvents(events: EventItem[]): EventInput[] {
 }
 
 export const CalendarPage: Component = () => {
+	const [subscribeOpen, setSubscribeOpen] = createSignal(false);
 	const isMobile = useMediaQuery(MOBILE_QUERY);
 	const dialog = useEventDialog();
 	const [events] = createResource(eventsVersion, () =>
@@ -82,7 +85,12 @@ export const CalendarPage: Component = () => {
 
 	return (
 		<>
-			<PageHeader title='Calendário' />
+			<PageHeader title='Calendário'>
+				<Button size='sm' icon='rss' onClick={() => setSubscribeOpen(true)}>
+					Subscrever
+				</Button>
+			</PageHeader>
+			<CalendarSubscribeDialog open={subscribeOpen()} onClose={() => setSubscribeOpen(false)} />
 			<Card class='p-3 sm:p-5'>
 				<div ref={element} />
 				<div class='mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-fg-muted'>

@@ -115,7 +115,9 @@ export const api = {
 	auth: {
 		login: (username: string, password: string) =>
 			post<{ token: string; user: User }>('/api/auth/login', { username, password }),
-		me: () => get<User>('/api/auth/me')
+		me: () => get<User>('/api/auth/me'),
+		changePassword: (current: string, password: string) =>
+			post<{ ok: true }>('/api/auth/password', { current, password })
 	},
 	events: {
 		list: (params: { upcoming?: boolean; type?: EventType; limit?: number } = {}) =>
@@ -128,6 +130,10 @@ export const api = {
 			get<SimilarRace[]>(`/api/events/races/similar${query(params)}`),
 		update: (id: number, event: EventInput) => put<EventItem>(`/api/events/${id}`, event),
 		remove: (id: number) => del<{ ok: true }>(`/api/events/${id}`)
+	},
+	calendar: {
+		feed: () => get<{ path: string }>('/api/calendar/feed'),
+		regenerate: () => post<{ path: string }>('/api/calendar/feed/regenerate')
 	},
 	stats: {
 		attendance: (range: { from?: string; to?: string }) =>
@@ -159,8 +165,10 @@ export const api = {
 		link: (handle: string) => get<{ url: string }>(`/api/files/${enc(handle)}/link`)
 	},
 	push: {
-		register: (token: string, platform: string) => post<{ ok: true }>('/api/push/tokens', { token, platform }),
-		unregister: (token: string) => del<{ ok: true }>('/api/push/tokens', { token })
+		config: () => get<{ enabled: boolean; publicKey: string | null }>('/api/push/config'),
+		subscribe: (subscription: PushSubscriptionJSON) => post<{ ok: true }>('/api/push/subscriptions', subscription),
+		unsubscribe: (endpoint: string) => del<{ ok: true }>('/api/push/subscriptions', { endpoint }),
+		test: () => post<{ sent: number; failed: number }>('/api/push/test')
 	},
 	payments: {
 		createOrder: (eventId: number) => post<{ orderId: string }>('/api/payments/orders', { event_id: eventId }),

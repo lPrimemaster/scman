@@ -85,6 +85,22 @@ export function deadlineState(event: Pick<EventItem, 'sub_limit_date'>, now = ne
 	return 'open';
 }
 
+/** Whether the list can offer one-tap answers for an event. */
+export function canQuickAnswer(event: Pick<EventItem, 'sub_limit_date' | 'my_changes_left'>, now = new Date()) {
+	return deadlineState(event, now) !== 'closed' && (event.my_changes_left ?? 0) > 0;
+}
+
+/** Events still waiting for my answer, the closest deadline first. */
+export function pendingEvents(events: EventItem[], now = new Date()) {
+	return events
+		.filter((e) => (e.my_status ?? -1) === -1 && canQuickAnswer(e, now))
+		.sort((a, b) => a.sub_limit_date.localeCompare(b.sub_limit_date) || a.start.localeCompare(b.start));
+}
+
+/** Opens the location in Google Maps (the app on phones, the website otherwise). */
+export const mapsUrl = (location: string) =>
+	`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+
 /** Mirrors `isSameName` in `backend/src/lib/similarity.js`: case, accents, punctuation and spacing don't count. */
 export function normalizeName(name: string) {
 	return name

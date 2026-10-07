@@ -2,6 +2,7 @@ import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { parseEventFiles, serializeEventFiles } from '../lib/eventFiles.js';
 import { addDaysISO, isDeadlinePassed, todayISO } from '../lib/dates.js';
 import { isSameName, raceMatchScore } from '../lib/similarity.js';
+import { describeEventChanges } from '../lib/eventChanges.js';
 import { canSeeEventType, EVENT_TYPES, OPEN_EVENT_TYPES, visibleEventTypes } from '../lib/roles.js';
 
 export const RESPONSE_STATUS = { NOT_GOING: 0, GOING: 1, MAYBE: 2 };
@@ -142,6 +143,8 @@ export default async function eventRoutes(app, { ctx }) {
 		return { event: toEventDto(event), attendance: attendance(event), me: selfState(event, user.id) };
 	}
 
+	const eventUrl = (id) => `/?event=${id}`;
+
 	function notifyEventChange(type, message) {
 		if (OPEN_EVENT_TYPES.includes(Number(type))) {
 			push.notifyRole('cpt', message);
@@ -171,10 +174,16 @@ export default async function eventRoutes(app, { ctx }) {
 				throw forbidden('Insufficient permissions for this event type.');
 			}
 			const types = type !== undefined ? [type] : visibleEventTypes(req.user.role);
-			const mine = repo.responses.statusByEvent(req.user.id);
-			return repo.events
-				.list({ types, upcoming, limit })
-				.map((row) => ({ ...toEventDto(row), my_status: mine.get(row.id) ?? -1 }));
+			const mine = repo.responses.byUser(req.user.id);
+			return repo.events.list({ types, upcoming, limit }).map((row) => {
+				const answer = mine.get(row.id);
+				return {
+					...toEventDto(row),
+					my_status: answer?.status ?? -1,
+					// Same rule as the detail: the first answer plus `change_limit` changes
+					my_changes_left: Math.max(0, row.change_limit + 1 - (answer?.count ?? 0))
+				};
+			});
 		}
 	);
 
@@ -207,7 +216,8 @@ export default async function eventRoutes(app, { ctx }) {
 
 			push.notifyRole('admin', {
 				title: 'Nova inscrição',
-				body: `${req.user.full_name} alterou o seu estado no evento ${event.name} para "${STATUS_NAMES[status]}"`
+				body: `${req.user.full_name} alterou o seu estado no evento ${event.name} para "${STATUS_NAMES[status]}"`,
+				url: eventUrl(event.id)
 			});
 
 			return eventDetail(event, req.user);
@@ -217,7 +227,7 @@ export default async function eventRoutes(app, { ctx }) {
 	app.post('/', { preHandler: admin, schema: { body: eventBody } }, async (req) => {
 		const row = toEventRow(req.body);
 		const id = repo.events.create(row);
-		notifyEventChange(row.type, { title: 'Novo evento adicionado.', body: row.name });
+		notifyEventChange(row.type, { title: 'Novo evento adicionado.', body: row.name, url: eventUrl(id) });
 		return toEventDto(repo.events.byId(id));
 	});
 
@@ -274,18 +284,29 @@ export default async function eventRoutes(app, { ctx }) {
 		const id = repo.events.create(row);
 		notifyEventChange(row.type, {
 			title: 'Nova prova CPT adicionada.',
-			body: `${row.name} (por ${req.user.full_name})`
+			body: `${row.name} (por ${req.user.full_name})`,
+			url: eventUrl(id)
 		});
 		return toEventDto(repo.events.byId(id));
 	});
 
 	app.put('/:id', { preHandler: admin, schema: { params: idParams, body: eventBody } }, async (req) => {
 		const { id } = req.params;
-		if (!repo.events.byId(id)) throw notFound('Event not found.');
+		const before = repo.events.byId(id);
+		if (!before) throw notFound('Event not found.');
 
 		const row = toEventRow(req.body);
 		repo.events.update(id, row);
-		notifyEventChange(row.type, { title: 'Evento editado.', body: row.name });
+
+		// Tell athletes what changed, so they know whether it matters to them
+		const changes = describeEventChanges(before, row);
+		if (changes.length > 0) {
+			notifyEventChange(row.type, {
+				title: `Evento alterado: ${row.name}`,
+				body: changes.join(' · '),
+				url: eventUrl(id)
+			});
+		}
 		return toEventDto(repo.events.byId(id));
 	});
 

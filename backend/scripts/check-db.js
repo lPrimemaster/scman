@@ -1,7 +1,7 @@
 // Read-only sanity check of a database (use a COPY of production).
 // Usage: yarn check-db /path/to/copy.db
 import Database from 'better-sqlite3';
-import { SCHEMA } from '../src/db.js';
+import { NEW_TABLES, SCHEMA } from '../src/db.js';
 import { parseEventFiles } from '../src/lib/eventFiles.js';
 
 const file = process.argv[2];
@@ -33,7 +33,9 @@ const fail = (msg) => {
 
 for (const table of tables(expected)) {
 	if (!tables(actual).includes(table)) {
-		fail(`missing table ${table}`);
+		// Tables added by newer releases are created on the next start; nothing else changes
+		if (NEW_TABLES.includes(table)) console.log(`+ ${table} (new, will be created on start)`);
+		else fail(`missing table ${table}`);
 		continue;
 	}
 	// Column order is irrelevant: all queries use named columns

@@ -6,6 +6,8 @@ import { Icon, type IconName } from '../ui/Icon';
 import { Dialog } from '../ui/Dialog';
 import { Button, IconButton } from '../ui/Button';
 import { theme, toggleTheme } from '../../lib/theme';
+import { NotificationsSetting } from '../../features/account/NotificationsSetting';
+import { ChangePasswordDialog } from '../../features/account/ChangePasswordDialog';
 import { cx } from '../ui/cx';
 
 export const APP_VERSION = 'v0.8';
@@ -44,6 +46,7 @@ export const AppShell: ParentComponent = (props) => {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [accountOpen, setAccountOpen] = createSignal(false);
+	const [passwordOpen, setPasswordOpen] = createSignal(false);
 
 	const items = () => NAV.filter((i) => !i.adminOnly || session.isAdmin());
 	const isActive = (href: string) => (href === '/' ? location.pathname === '/' : location.pathname.startsWith(href));
@@ -135,14 +138,28 @@ export const AppShell: ParentComponent = (props) => {
 									</p>
 								</div>
 							</div>
-							<Button icon='logout' block onClick={logout}>
-								Terminar sessão
-							</Button>
+							<NotificationsSetting />
+							<div class='flex flex-col gap-2'>
+								<Button
+									icon='lock'
+									block
+									onClick={() => {
+										setAccountOpen(false);
+										setPasswordOpen(true);
+									}}
+								>
+									Alterar password
+								</Button>
+								<Button icon='logout' block onClick={logout}>
+									Terminar sessão
+								</Button>
+							</div>
 							<p class='text-center text-xs text-fg-muted'>Seixal Clube 1925 · {APP_VERSION}</p>
 						</div>
 					)}
 				</Show>
 			</Dialog>
+			<ChangePasswordDialog open={passwordOpen()} onClose={() => setPasswordOpen(false)} />
 		</div>
 	);
 };

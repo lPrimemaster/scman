@@ -109,7 +109,32 @@ create table if not exists files (
 	mime_type text,
 	uploaded_at datetime default CURRENT_TIMESTAMP
 );
+
+-- Added after the first production release (new tables only)
+create table if not exists webpush_subscriptions (
+	id integer primary key autoincrement,
+	user_id integer not null,
+	endpoint text not null unique,
+	p256dh text not null,
+	auth text not null,
+	user_agent text,
+	created_at integer not null,
+	last_seen integer not null,
+	foreign key (user_id) references users(id)
+);
+
+create index if not exists idx_webpush_user on webpush_subscriptions(user_id);
+
+create table if not exists calendar_feeds (
+	user_id integer primary key,
+	token text not null unique,
+	created_at integer not null,
+	foreign key (user_id) references users(id)
+);
 `;
+
+// Tables added after the first production release: a production copy may not have them yet
+export const NEW_TABLES = ['webpush_subscriptions', 'calendar_feeds'];
 
 export function openDb(path, options = {}) {
 	const db = new Database(path, options);
@@ -259,11 +284,12 @@ export function createRepo(db) {
 
 		// ---------- Responses ----------
 		responses: {
-			statusByEvent: (userId) =>
+			// event id → { status, count } for one user
+			byUser: (userId) =>
 				new Map(
-					q('select event_id, status from responses where user_id = ?')
+					q('select event_id, status, count from responses where user_id = ?')
 						.all(userId)
-						.map((r) => [r.event_id, r.status])
+						.map((r) => [r.event_id, { status: r.status, count: r.count }])
 				),
 			get: (userId, eventId) =>
 				q('select status, count from responses where user_id = ? and event_id = ?').get(userId, eventId),
@@ -314,26 +340,38 @@ export function createRepo(db) {
 				q("update payments set status = 'EXPIRED' where status = 'PENDING' and created_at < ?").run(cutoff)
 		},
 
-		// ---------- FCM tokens ----------
-		fcm: {
-			upsert: ({ userId, token, platform, now }) =>
+		// ---------- Calendar subscription feeds ----------
+		calendarFeeds: {
+			byUser: (userId) => q('select * from calendar_feeds where user_id = ?').get(userId),
+			byToken: (token) => q('select * from calendar_feeds where token = ?').get(token),
+			set: (userId, token, now) =>
 				q(`
-					insert into fcmtokens (user_id, token, platform, created_at, last_seen, disabled)
-					values (@userId, @token, @platform, @now, @now, 0)
-					on conflict do update set
+					insert into calendar_feeds (user_id, token, created_at) values (?, ?, ?)
+					on conflict (user_id) do update set token = excluded.token, created_at = excluded.created_at
+				`).run(userId, token, now)
+		},
+
+		// ---------- Web Push subscriptions ----------
+		webpush: {
+			upsert: ({ userId, endpoint, p256dh, auth, userAgent, now }) =>
+				q(`
+					insert into webpush_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at, last_seen)
+					values (@userId, @endpoint, @p256dh, @auth, @userAgent, @now, @now)
+					on conflict (endpoint) do update set
 						user_id = excluded.user_id,
-						platform = excluded.platform,
-						last_seen = excluded.last_seen,
-						disabled = 0
-				`).run({ userId, token, platform, now }),
-			disableForUser: (userId, token) =>
-				q('update fcmtokens set disabled = 1 where user_id = ? and token = ?').run(userId, token),
-			disable: (token) => q('update fcmtokens set disabled = 1 where token = ?').run(token),
-			activeForUser: (userId) =>
-				q('select token from fcmtokens where user_id = ? and disabled = 0 order by last_seen desc')
-					.all(userId)
-					.map((r) => r.token),
-			deleteStale: (cutoff) => q('delete from fcmtokens where last_seen < ?').run(cutoff).changes
+						p256dh = excluded.p256dh,
+						auth = excluded.auth,
+						user_agent = excluded.user_agent,
+						last_seen = excluded.last_seen
+				`).run({ userId, endpoint, p256dh, auth, userAgent: userAgent ?? null, now }),
+			forUser: (userId) => q('select * from webpush_subscriptions where user_id = ?').all(userId),
+			removeForUser: (userId, endpoint) =>
+				q('delete from webpush_subscriptions where user_id = ? and endpoint = ?').run(userId, endpoint).changes,
+			remove: (endpoint) => q('delete from webpush_subscriptions where endpoint = ?').run(endpoint),
+			// Every successful send refreshes `last_seen`; subscriptions silent for long are dropped
+			touch: (endpoint, now) =>
+				q('update webpush_subscriptions set last_seen = ? where endpoint = ?').run(now, endpoint),
+			deleteStale: (cutoff) => q('delete from webpush_subscriptions where last_seen < ?').run(cutoff).changes
 		},
 
 		// ---------- Files ----------
@@ -383,13 +421,14 @@ export function createRepo(db) {
 					where n.id is null
 				`).all(),
 			markNotified: (eventId) => q('insert or ignore into eventnotifies (id) values (?)').run(eventId),
-			// (event, user) pairs without a response
+			// (event, user) pairs without a response, for active and enabled accounts
 			missingResponses: () =>
 				q(`
 					select e.id as eid, e.name, e.type, e.sub_limit_date, u.id as uid, u.full_name, u.role
 					from events e cross join users u
 					left join responses r on r.user_id = u.id and r.event_id = e.id
-					where r.user_id is null
+					left join account_disabled ad on ad.user_id = u.id
+					where r.user_id is null and u.active = 1 and ad.user_id is null
 				`).all()
 		}
 	};

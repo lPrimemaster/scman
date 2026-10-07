@@ -60,3 +60,21 @@ test('tokens issued by the previous server format are accepted', async () => {
 	const old = jwt.sign({ id: u.id, role: u.role }, SECRET, { expiresIn: '7d' });
 	assert.equal((await t.request({ token: old }, 'GET', '/api/auth/me')).status, 200);
 });
+
+test('users change their own password', async () => {
+	const ana = t.addUser('ana', 'federado');
+	const change = (body) => t.request(ana, 'POST', '/api/auth/password', body);
+
+	const wrong = await change({ current: 'nope', password: 'novapass1' });
+	assert.equal(wrong.status, 400, 'not 401: that would sign the user out');
+	assert.equal((await change({ current: PASSWORD, password: '123' })).status, 400, 'minimum length');
+	assert.equal(
+		(await t.request(null, 'POST', '/api/auth/password', { current: PASSWORD, password: 'novapass1' })).status,
+		401
+	);
+
+	assert.equal((await change({ current: PASSWORD, password: 'novapass1' })).status, 200);
+	const login = (password) => t.request(null, 'POST', '/api/auth/login', { username: 'ana', password });
+	assert.equal((await login(PASSWORD)).status, 401);
+	assert.equal((await login('novapass1')).status, 200);
+});

@@ -11,19 +11,16 @@ import { signToken } from '../src/plugins/auth.js';
 export const SECRET = 'test-secret';
 export const PASSWORD = 'secret123';
 
-export function fakeMessaging() {
+/** Records Web Push deliveries; `failures[endpoint] = statusCode` makes that endpoint fail. */
+export function fakeSender() {
 	const sent = [];
-	return {
-		sent,
-		async sendEachForMulticast(msg) {
-			sent.push(msg);
-			return {
-				successCount: msg.tokens.length,
-				failureCount: 0,
-				responses: msg.tokens.map(() => ({ success: true }))
-			};
-		}
-	};
+	const failures = {};
+	async function send(subscription, payload) {
+		const status = failures[subscription.endpoint];
+		if (status) throw Object.assign(new Error('push failed'), { statusCode: status });
+		sent.push({ endpoint: subscription.endpoint, ...JSON.parse(payload) });
+	}
+	return { send, sent, failures };
 }
 
 export function fakePaypal({ captureStatus = 'COMPLETED' } = {}) {
@@ -48,8 +45,8 @@ export const iso = (offsetDays, now = Date.now()) => new Date(now + offsetDays *
 export async function setup({ db, clock } = {}) {
 	const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scman-test-'));
 	const repo = createRepo(db ?? openDb(':memory:'));
-	const messaging = fakeMessaging();
-	const push = createPushService({ repo, messaging, log: { error: () => {} } });
+	const sender = fakeSender();
+	const push = createPushService({ repo, sender: sender.send, log: { error: () => {} } });
 	const state = { now: clock ?? Date.now() };
 	const app = await buildApp({
 		repo,
@@ -57,6 +54,7 @@ export async function setup({ db, clock } = {}) {
 		paypal: fakePaypal(),
 		storage: createStorage(path.join(tmp, 'uploads')),
 		secret: SECRET,
+		vapidPublicKey: 'test-public-key',
 		now: () => state.now
 	});
 
@@ -65,6 +63,13 @@ export async function setup({ db, clock } = {}) {
 		const id = repo.users.create({ username, full_name: full_name ?? username.toUpperCase(), role });
 		if (active) repo.users.activate(id, hash);
 		return { id, username, role, token: signToken({ id, role }, SECRET) };
+	}
+
+	/** Registers a browser for push; deliveries show up in `pushes` with this endpoint. */
+	function subscribe(user, name = user.username) {
+		const endpoint = `https://push.test/${name}`;
+		repo.webpush.upsert({ userId: user.id, endpoint, p256dh: 'p256dh', auth: 'auth', now: state.now });
+		return endpoint;
 	}
 
 	function addEvent(overrides = {}) {
@@ -101,8 +106,11 @@ export async function setup({ db, clock } = {}) {
 	return {
 		app,
 		repo,
-		messaging,
+		sender,
+		/** Delivered notifications: { endpoint, title, body, url, tag } */
+		pushes: sender.sent,
 		state,
+		subscribe,
 		addUser,
 		addEvent,
 		request,

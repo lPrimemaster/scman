@@ -2,12 +2,13 @@ import cron from 'node-cron';
 import { daysUntil } from '../lib/dates.js';
 import { canSeeEventType } from '../lib/roles.js';
 
-const FCM_STALE_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+// The app re-registers its subscription on every visit and each delivery refreshes it
+const PUSH_STALE_MS = 1000 * 60 * 60 * 24 * 90; // 90 days
 export const PAYMENT_EXPIRE_MS = 5 * 60 * 1000;
 
-export function cleanupStaleFCMTokens(repo, now = Date.now()) {
-	const removed = repo.fcm.deleteStale(now - FCM_STALE_MS);
-	console.log(`[FCM] Cleanup: Removed ${removed} tokens.`);
+export function cleanupStaleSubscriptions(repo, now = Date.now()) {
+	const removed = repo.webpush.deleteStale(now - PUSH_STALE_MS);
+	console.log(`[push] Cleanup: removed ${removed} stale subscriptions.`);
 	return removed;
 }
 
@@ -30,21 +31,26 @@ export function notifyEvent1Day(repo, push, now = Date.now()) {
 	}
 }
 
-// Remind users without an answer during the last week before the answer deadline.
+// Days before the answer deadline on which users without an answer are reminded
+export const DEADLINE_REMINDER_DAYS = [7, 2, 0];
+
+// Remind users without an answer a week before, two days before and on the deadline day.
 export function notifyEventResponseDeadline(repo, push, now = Date.now()) {
 	for (const pair of repo.schedule.missingResponses()) {
 		if (!canSeeEventType(pair.role, pair.type)) continue;
 
 		const daysToGo = daysUntil(pair.sub_limit_date, now);
-		if (daysToGo < 0 || daysToGo > 7) continue;
+		if (!DEADLINE_REMINDER_DAYS.includes(daysToGo)) continue;
 
 		console.log(`[cron] Notifying user ${pair.full_name} for event ${pair.name} response date limit.`);
 		push.notifyUser(pair.uid, {
 			title:
 				daysToGo > 0
-					? `Faltam ${daysToGo} dia(s) para o limite de inscrição do evento!`
-					: 'É hoje a data limite para inscrição do evento!',
-			body: `${pair.name}`
+					? `Faltam ${daysToGo} dias para o limite de inscrição!`
+					: 'É hoje a data limite para inscrição!',
+			body: `${pair.name} — ainda não respondeste.`,
+			url: `/?event=${pair.eid}`,
+			tag: `deadline-${pair.eid}`
 		});
 	}
 }
@@ -55,10 +61,10 @@ export function flagExpiredPayments(repo, now = Date.now()) {
 
 export function startScheduler(repo, push) {
 	// Run once on start
-	cleanupStaleFCMTokens(repo);
+	cleanupStaleSubscriptions(repo);
 	flagExpiredPayments(repo);
 
-	cron.schedule('0 0 * * *', () => cleanupStaleFCMTokens(repo), { timezone: 'UTC' });
+	cron.schedule('0 0 * * *', () => cleanupStaleSubscriptions(repo), { timezone: 'UTC' });
 	cron.schedule('0 10 * * *', () => notifyEvent1Day(repo, push), { timezone: 'UTC' });
 	cron.schedule('0 10 * * *', () => notifyEventResponseDeadline(repo, push), { timezone: 'UTC' });
 	cron.schedule('0 * * * *', () => flagExpiredPayments(repo));

@@ -22,12 +22,18 @@ export default tseslint.config(
 		}
 	},
 	{
-		files: ['backend/**/*.js', '*.js', 'e2e/**/*.mjs'],
+		files: ['backend/**/*.js', '*.js', 'e2e/**/*.mjs', 'scripts/**/*.mjs'],
 		languageOptions: {
 			globals: { ...globals.node }
 		},
 		rules: {
 			'no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
+		}
+	},
+	{
+		files: ['public/sw.js'],
+		languageOptions: {
+			globals: { ...globals.serviceworker }
 		}
 	}
 );

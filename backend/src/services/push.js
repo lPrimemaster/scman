@@ -1,58 +1,53 @@
-import fs from 'node:fs';
+import webpush from 'web-push';
 
-const MULTICAST_LIMIT = 500;
-const DEAD_TOKEN_CODES = ['registration-token-not-registered', 'invalid-argument', 'unregistered'];
+// The push service answers 404/410 when a subscription is gone (unsubscribed, browser data cleared)
+const GONE = [404, 410];
 
-// Returns a firebase messaging client, or null when no service account is available.
-export async function createFirebaseMessaging(serviceAccountPath) {
-	if (!fs.existsSync(serviceAccountPath)) {
-		console.warn(`[FCM] ${serviceAccountPath} not found. Push notifications are disabled.`);
+/**
+ * Returns a function that delivers one Web Push message, or null when VAPID keys are missing.
+ * @param {{ publicKey?: string, privateKey?: string, subject: string }} vapid
+ */
+export function createWebPushSender(vapid) {
+	if (!vapid.publicKey || !vapid.privateKey) {
+		console.warn('[push] VAPID keys are not set. Push notifications are disabled (run `yarn vapid-keys`).');
 		return null;
 	}
-	const { default: admin } = await import('firebase-admin');
-	admin.initializeApp({
-		credential: admin.credential.cert(JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8')))
-	});
-	return admin.messaging();
+	webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+	return (subscription, payload) => webpush.sendNotification(subscription, payload, { TTL: 60 * 60 * 24 });
 }
 
-// messaging: object with `sendEachForMulticast` (firebase-admin messaging) or null to disable sending.
-export function createPushService({ repo, messaging, log = console }) {
-	async function sendToUser(userId, { title, body, data }) {
-		const tokens = repo.fcm.activeForUser(userId);
-		if (!messaging || tokens.length === 0) {
-			return { ok: true, sent: 0, failed: 0 };
-		}
+/**
+ * Sends notifications to every browser a user enabled.
+ * @param {{ repo, sender: ((subscription, payload: string) => Promise<unknown>) | null, now?: () => number, log? }} deps
+ */
+export function createPushService({ repo, sender, now = Date.now, log = console }) {
+	async function sendToUser(userId, { title, body, url, tag }) {
+		const subscriptions = repo.webpush.forUser(userId);
+		if (!sender || subscriptions.length === 0) return { ok: true, sent: 0, failed: 0 };
 
+		const payload = JSON.stringify({ title, body, url: url ?? '/', tag });
 		let sent = 0;
 		let failed = 0;
 
-		for (let i = 0; i < tokens.length; i += MULTICAST_LIMIT) {
-			const chunk = tokens.slice(i, i + MULTICAST_LIMIT);
-			const resp = await messaging.sendEachForMulticast({
-				tokens: chunk,
-				notification: { title, body },
-				data: data ?? {}
-			});
-
-			sent += resp.successCount;
-			failed += resp.failureCount;
-
-			// Disable expired tokens
-			resp.responses.forEach((r, idx) => {
-				const code = r.error?.code || '';
-				if (!r.success && DEAD_TOKEN_CODES.some((c) => code.includes(c))) {
-					repo.fcm.disable(chunk[idx]);
+		await Promise.all(
+			subscriptions.map(async (s) => {
+				try {
+					await sender({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
+					repo.webpush.touch(s.endpoint, now());
+					sent++;
+				} catch (err) {
+					failed++;
+					if (GONE.includes(err?.statusCode)) repo.webpush.remove(s.endpoint);
+					else log.error(`[push] Failed to notify user ${userId}:`, err?.statusCode ?? err);
 				}
-			});
-		}
-
+			})
+		);
 		return { ok: failed === 0, sent, failed };
 	}
 
 	// Fire-and-forget helpers: failures are logged, never thrown to the caller.
 	function notifyUser(userId, message) {
-		sendToUser(userId, message).catch((err) => log.error(`[FCM] Failed to notify user ${userId}:`, err));
+		sendToUser(userId, message).catch((err) => log.error(`[push] Failed to notify user ${userId}:`, err));
 	}
 
 	function notifyRole(role, message) {
@@ -61,5 +56,5 @@ export function createPushService({ repo, messaging, log = console }) {
 		}
 	}
 
-	return { sendToUser, notifyUser, notifyRole };
+	return { enabled: !!sender, sendToUser, notifyUser, notifyRole };
 }

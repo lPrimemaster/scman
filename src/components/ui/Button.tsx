@@ -27,6 +27,32 @@ export type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
 	block?: boolean;
 };
 
+const BASE = 'inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors select-none';
+
+/** A link that looks like a button (for real navigation: external sites, webcal:, downloads). */
+export const ButtonLink: ParentComponent<
+	JSX.AnchorHTMLAttributes<HTMLAnchorElement> & { variant?: Variant; size?: Size; icon?: IconName; block?: boolean }
+> = (props) => {
+	const [local, rest] = splitProps(props, ['variant', 'size', 'icon', 'block', 'class', 'children']);
+	return (
+		<a
+			{...rest}
+			class={cx(
+				BASE,
+				VARIANTS[local.variant ?? 'secondary'],
+				SIZES[local.size ?? 'md'],
+				local.block && 'w-full',
+				local.class
+			)}
+		>
+			<Show when={local.icon}>
+				<Icon name={local.icon!} class='size-4 shrink-0' />
+			</Show>
+			{local.children}
+		</a>
+	);
+};
+
 export const Button: ParentComponent<ButtonProps> = (props) => {
 	const [local, rest] = splitProps(props, ['variant', 'size', 'icon', 'loading', 'block', 'class', 'children']);
 	return (
@@ -35,7 +61,7 @@ export const Button: ParentComponent<ButtonProps> = (props) => {
 			{...rest}
 			disabled={rest.disabled || local.loading}
 			class={cx(
-				'inline-flex items-center justify-center font-medium whitespace-nowrap transition-colors select-none',
+				BASE,
 				'cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
 				VARIANTS[local.variant ?? 'secondary'],
 				SIZES[local.size ?? 'md'],

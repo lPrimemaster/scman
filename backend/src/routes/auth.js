@@ -1,5 +1,7 @@
 import bcrypt from 'bcrypt';
 import { signToken } from '../plugins/auth.js';
+import { badRequest } from '../lib/errors.js';
+import { BCRYPT_ROUNDS } from './invites.js';
 
 export default async function authRoutes(app, { ctx }) {
 	const { repo, secret, authenticate } = ctx;
@@ -36,4 +38,28 @@ export default async function authRoutes(app, { ctx }) {
 	);
 
 	app.get('/me', { preHandler: authenticate }, async (req) => req.user);
+
+	// Signed-in users change their own password. A wrong current password is a 400, not a 401,
+	// so the client does not treat it as an expired session.
+	app.post(
+		'/password',
+		{
+			preHandler: authenticate,
+			schema: {
+				body: {
+					type: 'object',
+					required: ['current', 'password'],
+					properties: { current: { type: 'string' }, password: { type: 'string', minLength: 6 } }
+				}
+			}
+		},
+		async (req) => {
+			const user = repo.users.byId(req.user.id);
+			if (!user.passhash || !(await bcrypt.compare(req.body.current, user.passhash))) {
+				throw badRequest('Current password is incorrect.');
+			}
+			repo.users.setPassword(user.id, await bcrypt.hash(req.body.password, BCRYPT_ROUNDS));
+			return { ok: true };
+		}
+	);
 }

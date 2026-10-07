@@ -8,7 +8,11 @@ export function loadConfig(env = process.env) {
 		secret: env.JWT_SECRET || DEV_SECRET,
 		port: Number(env.PORT || 4200),
 		uploadDir: env.UPLOAD_DIR || 'uploads/',
-		firebaseServiceAccount: env.FIREBASE_SERVICE_ACCOUNT || 'serviceAccountKey.json',
+		vapid: {
+			publicKey: env.VAPID_PUBLIC_KEY,
+			privateKey: env.VAPID_PRIVATE_KEY,
+			subject: env.VAPID_SUBJECT || 'mailto:admin@sc1925.pt'
+		},
 		paypal: {
 			base: env.PAYPAL_ENV === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com',
 			clientId: env.PAYPAL_CLIENT_ID,

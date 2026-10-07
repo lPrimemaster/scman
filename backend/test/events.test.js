@@ -8,7 +8,7 @@ beforeEach(async () => {
 	admin = t.addUser('admin', 'admin', { full_name: 'Ana' });
 	fed = t.addUser('fed', 'federado', { full_name: 'Filipe' });
 	cpt = t.addUser('cpt', 'cpt', { full_name: 'Carla' });
-	t.repo.fcm.upsert({ userId: admin.id, token: 'a'.repeat(30), platform: 'android', now: Date.now() });
+	t.subscribe(admin);
 });
 afterEach(() => t.cleanup());
 
@@ -56,18 +56,19 @@ test('event validation', async () => {
 });
 
 test('new events notify the relevant roles', async () => {
-	t.repo.fcm.upsert({ userId: cpt.id, token: 'c'.repeat(30), platform: 'android', now: Date.now() });
+	const cptEndpoint = t.subscribe(cpt);
 	await t.request(admin, 'POST', '/api/events', body({ type: 2 }));
 	await tick();
 	assert.deepEqual(
-		t.messaging.sent.map((m) => m.tokens[0][0]),
-		['a'],
+		t.pushes.map((m) => m.endpoint),
+		['https://push.test/admin'],
 		'cpt not notified of federated event'
 	);
-	await t.request(admin, 'POST', '/api/events', body({ type: 0 }));
+	const created = await t.request(admin, 'POST', '/api/events', body({ type: 0 }));
 	await tick();
-	assert.ok(t.messaging.sent.some((m) => m.tokens[0][0] === 'c'));
-	assert.equal(t.messaging.sent.at(-1).notification.title, 'Novo evento adicionado.');
+	const toCpt = t.pushes.find((m) => m.endpoint === cptEndpoint);
+	assert.equal(toCpt.title, 'Novo evento adicionado.');
+	assert.equal(toCpt.url, `/?event=${created.body.id}`, 'opens the event');
 });
 
 test('cpt users only see open event types', async () => {
@@ -125,8 +126,8 @@ test('responding updates attendance and notifies admins', async () => {
 	assert.equal(res.body.me.status, 1);
 
 	await tick();
-	assert.equal(t.messaging.sent.at(-1).notification.title, 'Nova inscrição');
-	assert.match(t.messaging.sent.at(-1).notification.body, /Filipe .* para "Interessado"/);
+	assert.equal(t.pushes.at(-1).title, 'Nova inscrição');
+	assert.match(t.pushes.at(-1).body, /Filipe .* para "Interessado"/);
 
 	detail = (await t.request(cpt, 'GET', `/api/events/${t.addEvent({ type: 0 })}`)).body;
 	assert.deepEqual(names(detail.attendance.noanswer), ['Ana', 'Carla', 'Filipe'], 'open events expect everyone');
@@ -182,7 +183,7 @@ test('invalid response status is rejected', async () => {
 const race = (o = {}) => ({ name: 'Prova Clube', location: 'Seixal', start: iso(20), ...o });
 
 test('any athlete can create a CPT race with fixed type, price and change limit', async () => {
-	t.repo.fcm.upsert({ userId: fed.id, token: 'f'.repeat(30), platform: 'android', now: Date.now() });
+	t.subscribe(fed);
 	for (const user of [cpt, fed, admin]) {
 		const res = await t.request(
 			user,
@@ -199,8 +200,8 @@ test('any athlete can create a CPT race with fixed type, price and change limit'
 		assert.deepEqual(res.body.files, []);
 	}
 	await tick();
-	assert.equal(t.messaging.sent.at(-1).notification.title, 'Nova prova CPT adicionada.');
-	assert.match(t.messaging.sent.at(-1).notification.body, new RegExp(`Prova ${admin.id} \\(por Ana\\)`));
+	assert.equal(t.pushes.at(-1).title, 'Nova prova CPT adicionada.');
+	assert.match(t.pushes.at(-1).body, new RegExp(`Prova ${admin.id} \\(por Ana\\)`));
 });
 
 test('CPT race deadline: custom, clamped to today, validated', async () => {
@@ -275,4 +276,34 @@ test('similar races flag exact names first and cover every visible type', async 
 		fedRes.body.some((e) => e.type === 2 && !e.exact),
 		'federados also see federated races'
 	);
+});
+
+test('editing an event tells athletes what changed', async () => {
+	t.subscribe(fed);
+	const created = await t.request(admin, 'POST', '/api/events', body({ location: 'Évora' }));
+	const id = created.body.id;
+	await tick();
+	t.pushes.length = 0;
+
+	await t.request(admin, 'PUT', `/api/events/${id}`, body({ location: 'Beja' }));
+	await tick();
+	const msg = t.pushes.find((m) => m.endpoint === 'https://push.test/fed');
+	assert.equal(msg.title, 'Evento alterado: Volta');
+	assert.equal(msg.body, 'Local: Évora → Beja');
+	assert.equal(msg.url, `/?event=${id}`);
+
+	t.pushes.length = 0;
+	await t.request(admin, 'PUT', `/api/events/${id}`, body({ location: 'Beja' }));
+	await tick();
+	assert.equal(t.pushes.length, 0, 'saving without changes does not notify');
+});
+
+test('the event list includes how many answer changes are left', async () => {
+	const id = t.addEvent({ change_limit: 1 });
+	const left = async () => (await t.request(fed, 'GET', '/api/events')).body.find((e) => e.id === id).my_changes_left;
+	assert.equal(await left(), 2, 'first answer plus one change');
+	await t.request(fed, 'PUT', `/api/events/${id}/response`, { status: 1 });
+	assert.equal(await left(), 1);
+	await t.request(fed, 'PUT', `/api/events/${id}/response`, { status: 0 });
+	assert.equal(await left(), 0);
 });
