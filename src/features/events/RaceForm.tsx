@@ -1,16 +1,16 @@
-import { createResource, createSignal, For, Show, type Component } from 'solid-js';
+import { createResource, createSignal, type Component } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { EventItem, RaceInput } from '../../lib/types';
 import { api, ApiError } from '../../lib/api';
-import { addDays, formatRange, todayISO } from '../../lib/dates';
+import { addDays, todayISO } from '../../lib/dates';
 import { createDebounced } from '../../lib/debounce';
 import { MEMBER_RACE } from '../../lib/events';
 import { invalidateEvents } from '../../lib/eventsBus';
 import { toast } from '../../lib/toast';
 import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
-import { Notice } from '../../components/ui/Feedback';
 import { Field, Input, Textarea } from '../../components/ui/Field';
+import { RaceNameField } from './RaceNameField';
 
 /** Default deadline: `deadlineDays` before the start, never before today. */
 export function defaultRaceDeadline(start: string, today = todayISO()) {
@@ -89,14 +89,12 @@ export const RaceFormDialog: Component<{
 			}
 		>
 			<form id='race-form' class='grid grid-cols-1 gap-4 sm:grid-cols-2' onSubmit={submit}>
-				<Field label='Nome' class='sm:col-span-2'>
-					<Input
-						name='name'
-						value={form.name}
-						onInput={(e) => setForm('name', e.currentTarget.value)}
-						required
-					/>
-				</Field>
+				<RaceNameField
+					value={form.name}
+					onInput={(name) => setForm('name', name)}
+					suggestions={suggestions()}
+					onPick={(race) => props.onOpenExisting(race.id)}
+				/>
 				<Field label='Local' class='sm:col-span-2'>
 					<Input
 						name='location'
@@ -105,32 +103,6 @@ export const RaceFormDialog: Component<{
 						required
 					/>
 				</Field>
-				<Show when={suggestions().length > 0}>
-					<Notice tone='warning' icon='flag' class='sm:col-span-2'>
-						<p class='font-medium'>Esta prova já existe?</p>
-						<ul class='mt-1.5 flex flex-col gap-1.5'>
-							<For each={suggestions()}>
-								{(race) => (
-									<li class='flex items-center justify-between gap-3'>
-										<span class='min-w-0'>
-											<span class='block truncate font-medium'>{race.name}</span>
-											<span class='block truncate text-xs opacity-80'>
-												{formatRange(race.start, race.end)} · {race.location}
-											</span>
-										</span>
-										<Button
-											size='sm'
-											aria-label={`Ver ${race.name}`}
-											onClick={() => props.onOpenExisting(race.id)}
-										>
-											Ver
-										</Button>
-									</li>
-								)}
-							</For>
-						</ul>
-					</Notice>
-				</Show>
 				<Field label='Data' hint='Provas de um só dia.'>
 					<Input
 						name='start'

@@ -88,9 +88,21 @@ test('creating a race suggests an existing one with a similar name', async ({ pa
 	await page.getByRole('button', { name: 'Nova prova' }).click();
 	const form = page.getByRole('dialog', { name: 'Nova prova CPT' });
 
-	await form.getByLabel('Nome').fill('GP do Seixal');
-	await expect(form.getByText('Esta prova já existe?')).toBeVisible();
-	await form.getByRole('button', { name: 'Ver Prova CPT Seixal' }).click();
+	const name = form.getByRole('combobox', { name: 'Nome' });
+	await name.fill('GP do Seixal');
+	const list = form.getByRole('listbox', { name: 'Provas existentes' });
+	await expect(list.getByRole('option', { name: /Prova CPT Seixal/ })).toBeVisible();
+
+	// Escape only closes the list; typing brings it back
+	await name.press('Escape');
+	await expect(list).toHaveCount(0);
+	await expect(form).toBeVisible();
+	await name.pressSequentially(' ');
+	await expect(list).toBeVisible();
+
+	// Arrow down + Enter opens the existing race
+	await name.press('ArrowDown');
+	await name.press('Enter');
 
 	await expect(page.getByRole('dialog', { name: 'Prova CPT Seixal' })).toBeVisible();
 	await expect(form).toHaveCount(0);
