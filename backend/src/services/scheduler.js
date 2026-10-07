@@ -1,0 +1,65 @@
+import cron from 'node-cron';
+import { daysUntil } from '../lib/dates.js';
+import { canSeeEventType } from '../lib/roles.js';
+
+const FCM_STALE_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+export const PAYMENT_EXPIRE_MS = 5 * 60 * 1000;
+
+export function cleanupStaleFCMTokens(repo, now = Date.now()) {
+	const removed = repo.fcm.deleteStale(now - FCM_STALE_MS);
+	console.log(`[FCM] Cleanup: Removed ${removed} tokens.`);
+	return removed;
+}
+
+// Notify users that signed up for an event (available or maybe) one day before it starts.
+export function notifyEvent1Day(repo, push, now = Date.now()) {
+	for (const pair of repo.schedule.unnotifiedResponses()) {
+		const daysToGo = daysUntil(pair.start, now);
+
+		if (daysToGo === 1 && pair.status !== 0) {
+			console.log(`[cron] Notifying user ${pair.uid} for event ${pair.name}.`);
+			push.notifyUser(pair.uid, {
+				title: 'Falta 1 dia para um evento em que estás inscrito!',
+				body: `${pair.name}`
+			});
+		}
+
+		if (daysToGo <= 1) {
+			repo.schedule.markNotified(pair.eid);
+		}
+	}
+}
+
+// Remind users without an answer during the last week before the answer deadline.
+export function notifyEventResponseDeadline(repo, push, now = Date.now()) {
+	for (const pair of repo.schedule.missingResponses()) {
+		if (!canSeeEventType(pair.role, pair.type)) continue;
+
+		const daysToGo = daysUntil(pair.sub_limit_date, now);
+		if (daysToGo < 0 || daysToGo > 7) continue;
+
+		console.log(`[cron] Notifying user ${pair.full_name} for event ${pair.name} response date limit.`);
+		push.notifyUser(pair.uid, {
+			title:
+				daysToGo > 0
+					? `Faltam ${daysToGo} dia(s) para o limite de inscrição do evento!`
+					: 'É hoje a data limite para inscrição do evento!',
+			body: `${pair.name}`
+		});
+	}
+}
+
+export function flagExpiredPayments(repo, now = Date.now()) {
+	return repo.payments.expireStale(now - PAYMENT_EXPIRE_MS).changes;
+}
+
+export function startScheduler(repo, push) {
+	// Run once on start
+	cleanupStaleFCMTokens(repo);
+	flagExpiredPayments(repo);
+
+	cron.schedule('0 0 * * *', () => cleanupStaleFCMTokens(repo), { timezone: 'UTC' });
+	cron.schedule('0 10 * * *', () => notifyEvent1Day(repo, push), { timezone: 'UTC' });
+	cron.schedule('0 10 * * *', () => notifyEventResponseDeadline(repo, push), { timezone: 'UTC' });
+	cron.schedule('0 * * * *', () => flagExpiredPayments(repo));
+}
