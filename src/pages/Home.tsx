@@ -90,6 +90,10 @@ export const Home: Component = () => {
 				<RaceFormDialog
 					onClose={() => setCreatingRace(false)}
 					onSaved={(event) => eventDialog.open(event.id)}
+					onOpenExisting={(id) => {
+						setCreatingRace(false);
+						eventDialog.open(id);
+					}}
 				/>
 			</Show>
 		</>

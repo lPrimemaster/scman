@@ -82,3 +82,16 @@ test('a cpt athlete creates a CPT race without price or change limit fields', as
 	await page.keyboard.press('Escape');
 	await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible();
 });
+
+test('creating a race suggests an existing one with a similar name', async ({ page }) => {
+	await login(page, USERS.cpt);
+	await page.getByRole('button', { name: 'Nova prova' }).click();
+	const form = page.getByRole('dialog', { name: 'Nova prova CPT' });
+
+	await form.getByLabel('Nome').fill('GP do Seixal');
+	await expect(form.getByText('Esta prova já existe?')).toBeVisible();
+	await form.getByRole('button', { name: 'Ver Prova CPT Seixal' }).click();
+
+	await expect(page.getByRole('dialog', { name: 'Prova CPT Seixal' })).toBeVisible();
+	await expect(form).toHaveCount(0);
+});

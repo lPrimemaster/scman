@@ -64,7 +64,7 @@ export const Notice: ParentComponent<{ tone?: Tone; icon?: IconName; class?: str
 		<Show when={props.icon}>
 			<Icon name={props.icon!} class='mt-0.5 size-4 shrink-0' />
 		</Show>
-		<div>{props.children}</div>
+		<div class='min-w-0 flex-1'>{props.children}</div>
 	</div>
 );
 

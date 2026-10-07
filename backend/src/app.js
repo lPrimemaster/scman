@@ -32,7 +32,8 @@ export async function buildApp({ repo, push, paypal, storage, secret, logger = f
 			req.log.error(err);
 			console.error(err);
 		}
-		return reply.code(status).send({ error: status >= 500 ? 'Internal error.' : err.message });
+		if (status >= 500) return reply.code(status).send({ error: 'Internal error.' });
+		return reply.code(status).send({ ...err.details, error: err.message });
 	});
 
 	const ctx = { repo, push, paypal, storage, secret, now, ...createAuth({ repo, secret }) };

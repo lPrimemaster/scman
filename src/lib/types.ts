@@ -36,6 +36,8 @@ export interface EventItem {
 
 export type EventInput = Omit<EventItem, 'id' | 'my_status'>;
 
+export type SimilarRace = EventItem & { score: number };
+
 export type RaceInput = Pick<EventItem, 'name' | 'location' | 'start' | 'end' | 'sub_limit_date' | 'description'>;
 
 export interface Attendance {

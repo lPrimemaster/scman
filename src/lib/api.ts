@@ -8,6 +8,7 @@ import type {
 	RaceInput,
 	ResponseStatus,
 	Role,
+	SimilarRace,
 	TokenCheck,
 	User
 } from './types';
@@ -23,7 +24,9 @@ export const tokenStore = {
 export class ApiError extends Error {
 	constructor(
 		public status: number,
-		message: string
+		message: string,
+		/** The parsed error body, for endpoints that send extra fields */
+		public data?: Record<string, unknown>
 	) {
 		super(message);
 	}
@@ -56,7 +59,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 		const message = data?.error ?? data?.message ?? `Erro ${res.status}`;
 		if (token && res.status === 401) onAuthFailure('unauthorized');
 		if (token && res.status === 403 && message === 'Account disabled') onAuthFailure('disabled');
-		throw new ApiError(res.status, message);
+		throw new ApiError(res.status, message, data);
 	}
 	return data as T;
 }
@@ -120,6 +123,8 @@ export const api = {
 		respond: (id: number, status: ResponseStatus) => put<EventDetail>(`/api/events/${id}/response`, { status }),
 		create: (event: EventInput) => post<EventItem>('/api/events', event),
 		createRace: (race: RaceInput) => post<EventItem>('/api/events/races', race),
+		similarRaces: (params: { name: string; location?: string; start?: string }) =>
+			get<SimilarRace[]>(`/api/events/races/similar${query(params)}`),
 		update: (id: number, event: EventInput) => put<EventItem>(`/api/events/${id}`, event),
 		remove: (id: number) => del<{ ok: true }>(`/api/events/${id}`)
 	},

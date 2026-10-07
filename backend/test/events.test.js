@@ -183,7 +183,7 @@ test('any athlete can create a CPT race with fixed type, price and change limit'
 			user,
 			'POST',
 			'/api/events/races',
-			race({ type: 2, price: '99.00', change_limit: 0 })
+			race({ name: `Prova ${user.id}`, type: 2, price: '99.00', change_limit: 0 })
 		);
 		assert.equal(res.status, 200);
 		assert.equal(res.body.type, 0);
@@ -194,14 +194,14 @@ test('any athlete can create a CPT race with fixed type, price and change limit'
 	}
 	await tick();
 	assert.equal(t.messaging.sent.at(-1).notification.title, 'Nova prova CPT adicionada.');
-	assert.match(t.messaging.sent.at(-1).notification.body, /Prova Clube \(por Ana\)/);
+	assert.match(t.messaging.sent.at(-1).notification.body, new RegExp(`Prova ${admin.id} \\(por Ana\\)`));
 });
 
 test('CPT race deadline: custom, clamped to today, validated', async () => {
-	const custom = await t.request(cpt, 'POST', '/api/events/races', race({ sub_limit_date: iso(15) }));
+	const custom = await t.request(cpt, 'POST', '/api/events/races', race({ name: 'Custom', sub_limit_date: iso(15) }));
 	assert.equal(custom.body.sub_limit_date, iso(15));
 
-	const soon = await t.request(cpt, 'POST', '/api/events/races', race({ start: iso(3), end: iso(3) }));
+	const soon = await t.request(cpt, 'POST', '/api/events/races', race({ name: 'Soon', start: iso(3), end: iso(3) }));
 	assert.equal(soon.body.sub_limit_date, iso(0), 'never before today');
 
 	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ sub_limit_date: iso(25) }))).status, 400);
@@ -212,4 +212,38 @@ test('CPT race deadline: custom, clamped to today, validated', async () => {
 	);
 	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ end: iso(19) }))).status, 400);
 	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ name: '' }))).status, 400);
+});
+
+test('similar races: upcoming CPT races only, best first, at most 3', async () => {
+	const seixal = t.addEvent({ name: 'Prova CPT Seixal', type: 0, start: iso(20), end: iso(20) });
+	t.addEvent({ name: 'Seixal Fed', type: 2 });
+	t.addEvent({ name: 'Seixal antiga', type: 0, start: iso(-20), end: iso(-20) });
+	t.addEvent({ name: 'Prova de Évora', type: 0 });
+	for (let i = 0; i < 4; i++) t.addEvent({ name: `Seixal ${i} extra palavras`, type: 0 });
+
+	const res = await t.request(cpt, 'GET', `/api/events/races/similar?name=${encodeURIComponent('GP do Seixal')}`);
+	assert.equal(res.status, 200);
+	assert.equal(res.body.length, 3);
+	assert.equal(res.body[0].id, seixal);
+	assert.ok(res.body.every((e) => e.type === 0 && e.name.includes('Seixal') && e.start >= iso(0)));
+	assert.ok(res.body[0].score >= res.body[1].score);
+
+	assert.deepEqual((await t.request(cpt, 'GET', '/api/events/races/similar?name=Lisboa')).body, []);
+	assert.equal((await t.request(cpt, 'GET', '/api/events/races/similar?name=ab')).status, 400);
+	assert.equal((await t.request(null, 'GET', '/api/events/races/similar?name=Seixal')).status, 401);
+});
+
+test('creating an exact duplicate race returns the existing one', async () => {
+	const first = await t.request(cpt, 'POST', '/api/events/races', race({ name: 'Prova do Seixal' }));
+	const dup = await t.request(fed, 'POST', '/api/events/races', race({ name: ' prova do SEIXAL' }));
+	assert.equal(dup.status, 409);
+	assert.equal(dup.body.existingId, first.body.id);
+
+	const otherDay = await t.request(
+		fed,
+		'POST',
+		'/api/events/races',
+		race({ name: 'Prova do Seixal', start: iso(21), end: iso(21) })
+	);
+	assert.equal(otherDay.status, 200);
 });

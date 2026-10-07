@@ -1,6 +1,7 @@
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { parseEventFiles, serializeEventFiles } from '../lib/eventFiles.js';
 import { addDaysISO, isDeadlinePassed, todayISO } from '../lib/dates.js';
+import { isSameRace, raceMatchScore } from '../lib/similarity.js';
 import { canSeeEventType, EVENT_TYPES, OPEN_EVENT_TYPES, visibleEventTypes } from '../lib/roles.js';
 
 export const RESPONSE_STATUS = { NOT_GOING: 0, GOING: 1, MAYBE: 2 };
@@ -53,6 +54,8 @@ const memberRaceBody = {
 		description: { type: ['string', 'null'] }
 	}
 };
+
+const SIMILAR_RACES = { limit: 3, minScore: 0.45 };
 
 // Default deadline: `deadlineDays` before the start, but never before today
 export function defaultRaceDeadline(start, today) {
@@ -215,9 +218,35 @@ export default async function eventRoutes(app, { ctx }) {
 		return toEventDto(repo.events.byId(id));
 	});
 
+	// Existing races resembling the one being typed, so athletes don't add it twice
+	app.get(
+		'/races/similar',
+		{
+			preHandler: authenticate,
+			schema: {
+				querystring: {
+					type: 'object',
+					required: ['name'],
+					properties: { name: { type: 'string', minLength: 3 }, location: { type: 'string' }, start: isoDate }
+				}
+			}
+		},
+		async (req) => {
+			return repo.events
+				.upcomingOfType(MEMBER_RACE.type, todayISO(now()))
+				.map((row) => ({ row, score: raceMatchScore(row, req.query) }))
+				.filter((m) => m.score >= SIMILAR_RACES.minScore)
+				.sort((a, b) => b.score - a.score)
+				.slice(0, SIMILAR_RACES.limit)
+				.map(({ row, score }) => ({ ...toEventDto(row), score: Math.round(score * 100) / 100 }));
+		}
+	);
+
 	app.post('/races', { preHandler: authenticate, schema: { body: memberRaceBody } }, async (req) => {
 		const today = todayISO(now());
 		const { start } = req.body;
+		const existing = repo.events.upcomingOfType(MEMBER_RACE.type, today).find((row) => isSameRace(row, req.body));
+		if (existing) throw conflict('Race already exists.', { existingId: existing.id });
 		const sub_limit_date = req.body.sub_limit_date ?? defaultRaceDeadline(start, today);
 		if (start < today) throw badRequest('Start date is in the past.');
 		if (sub_limit_date < today || sub_limit_date > start) throw badRequest('Invalid deadline.');
