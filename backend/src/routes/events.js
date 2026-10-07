@@ -1,6 +1,6 @@
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { parseEventFiles, serializeEventFiles } from '../lib/eventFiles.js';
-import { isDeadlinePassed } from '../lib/dates.js';
+import { addDaysISO, isDeadlinePassed, todayISO } from '../lib/dates.js';
 import { canSeeEventType, EVENT_TYPES, OPEN_EVENT_TYPES, visibleEventTypes } from '../lib/roles.js';
 
 export const RESPONSE_STATUS = { NOT_GOING: 0, GOING: 1, MAYBE: 2 };
@@ -37,6 +37,28 @@ const eventBody = {
 		}
 	}
 };
+
+// CPT races created by any athlete: type, price and change limit are fixed
+export const MEMBER_RACE = { type: 0, price: '0.00', change_limit: 10, deadlineDays: 10 };
+
+const memberRaceBody = {
+	type: 'object',
+	required: ['name', 'location', 'start', 'end'],
+	properties: {
+		name: { type: 'string', minLength: 1 },
+		location: { type: 'string', minLength: 1 },
+		start: isoDate,
+		end: isoDate,
+		sub_limit_date: isoDate,
+		description: { type: ['string', 'null'] }
+	}
+};
+
+// Default deadline: `deadlineDays` before the start, but never before today
+export function defaultRaceDeadline(start, today) {
+	const deadline = addDaysISO(start, -MEMBER_RACE.deadlineDays);
+	return deadline < today ? today : deadline;
+}
 
 export function toEventDto(row) {
 	return {
@@ -190,6 +212,29 @@ export default async function eventRoutes(app, { ctx }) {
 		const row = toEventRow(req.body);
 		const id = repo.events.create(row);
 		notifyEventChange(row.type, { title: 'Novo evento adicionado.', body: row.name });
+		return toEventDto(repo.events.byId(id));
+	});
+
+	app.post('/races', { preHandler: authenticate, schema: { body: memberRaceBody } }, async (req) => {
+		const today = todayISO(now());
+		const { start } = req.body;
+		const sub_limit_date = req.body.sub_limit_date ?? defaultRaceDeadline(start, today);
+		if (start < today) throw badRequest('Start date is in the past.');
+		if (sub_limit_date < today || sub_limit_date > start) throw badRequest('Invalid deadline.');
+
+		const row = toEventRow({
+			...req.body,
+			sub_limit_date,
+			type: MEMBER_RACE.type,
+			price: MEMBER_RACE.price,
+			change_limit: MEMBER_RACE.change_limit,
+			files: []
+		});
+		const id = repo.events.create(row);
+		notifyEventChange(row.type, {
+			title: 'Nova prova CPT adicionada.',
+			body: `${row.name} (por ${req.user.full_name})`
+		});
 		return toEventDto(repo.events.byId(id));
 	});
 

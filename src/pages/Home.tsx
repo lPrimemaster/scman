@@ -1,4 +1,4 @@
-import { createResource, createSignal, For, Show, type Component } from 'solid-js';
+import { createResource, createSignal, For, Show, type Component, type ParentComponent } from 'solid-js';
 import { api } from '../lib/api';
 import type { EventType } from '../lib/types';
 import { useSession } from '../lib/session';
@@ -7,10 +7,12 @@ import { eventsVersion } from '../lib/eventsBus';
 import { Card, EmptyState, PageHeader, PageSpinner, SectionHeader } from '../components/ui/Feedback';
 import { Button } from '../components/ui/Button';
 import { EventList } from '../features/events/EventList';
+import { RaceFormDialog } from '../features/events/RaceForm';
+import { useEventDialog } from '../features/events/useEventDialog';
 
 const PREVIEW_COUNT = 5;
 
-const UpcomingSection: Component<{ title: string; type: EventType; emptyText: string }> = (props) => {
+const UpcomingSection: ParentComponent<{ title: string; type: EventType; emptyText: string }> = (props) => {
 	const [expanded, setExpanded] = createSignal(false);
 	const [events] = createResource(
 		() => [props.type, eventsVersion()] as const,
@@ -21,9 +23,12 @@ const UpcomingSection: Component<{ title: string; type: EventType; emptyText: st
 	return (
 		<Card>
 			<SectionHeader title={props.title}>
-				<Show when={(events()?.length ?? 0) > 0}>
-					<span class='text-sm text-fg-muted tabular-nums'>{events()!.length}</span>
-				</Show>
+				<div class='flex items-center gap-3'>
+					<Show when={(events()?.length ?? 0) > 0}>
+						<span class='text-sm text-fg-muted tabular-nums'>{events()!.length}</span>
+					</Show>
+					{props.children}
+				</div>
 			</SectionHeader>
 			<Show when={events.state !== 'errored'} fallback={<EmptyState title='Erro ao carregar eventos.' />}>
 				<Show when={!events.loading || events()} fallback={<PageSpinner />}>
@@ -61,6 +66,8 @@ const OPEN_SECTIONS: HomeSection[] = [
 export const Home: Component = () => {
 	const session = useSession();
 	const firstName = () => session.user()?.full_name.split(' ')[0];
+	const eventDialog = useEventDialog();
+	const [creatingRace, setCreatingRace] = createSignal(false);
 	const sections = () => (isFederated(session.role()) ? [...FEDERATED_SECTIONS, ...OPEN_SECTIONS] : OPEN_SECTIONS);
 
 	return (
@@ -69,10 +76,22 @@ export const Home: Component = () => {
 			<div class='flex flex-col gap-5'>
 				<For each={sections()}>
 					{(section) => (
-						<UpcomingSection title={section.title} type={section.type} emptyText={section.emptyText} />
+						<UpcomingSection title={section.title} type={section.type} emptyText={section.emptyText}>
+							<Show when={section.type === 0}>
+								<Button size='sm' icon='plus' onClick={() => setCreatingRace(true)}>
+									Nova prova
+								</Button>
+							</Show>
+						</UpcomingSection>
 					)}
 				</For>
 			</div>
+			<Show when={creatingRace()}>
+				<RaceFormDialog
+					onClose={() => setCreatingRace(false)}
+					onSaved={(event) => eventDialog.open(event.id)}
+				/>
+			</Show>
 		</>
 	);
 };

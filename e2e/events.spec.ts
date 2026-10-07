@@ -58,3 +58,27 @@ test('calendar shows events and opens the detail', async ({ page }) => {
 	await expect(page.getByRole('dialog', { name: 'Prova CPT Seixal' })).toBeVisible();
 	await expect(page.locator('.fc-event', { hasText: 'Volta ao Alentejo' })).toHaveCount(0);
 });
+
+test('a cpt athlete creates a CPT race without price or change limit fields', async ({ page }, info) => {
+	const isoIn = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+	const name = unique(info, 'Prova Atleta');
+	await login(page, USERS.cpt);
+
+	await page.getByRole('button', { name: 'Nova prova' }).click();
+	const form = page.getByRole('dialog', { name: 'Nova prova CPT' });
+	await expect(form.getByLabel('Custo (€)')).toHaveCount(0);
+	await expect(form.getByLabel('Máximo de alterações')).toHaveCount(0);
+
+	await form.getByLabel('Nome').fill(name);
+	await form.getByLabel('Local').fill('Amora');
+	await form.getByLabel('Início').fill(isoIn(25));
+	await expect(form.getByLabel('Fim')).toHaveValue(isoIn(25));
+	await expect(form.getByLabel('Limite de inscrição')).toHaveValue(isoIn(15));
+	await form.getByRole('button', { name: 'Criar prova' }).click();
+
+	const detail = page.getByRole('dialog', { name });
+	await expect(detail).toBeVisible();
+	await expect(detail.getByText('Prova CPT').first()).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible();
+});

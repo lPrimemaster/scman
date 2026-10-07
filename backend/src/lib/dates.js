@@ -19,3 +19,11 @@ export function utcMidnight(now = Date.now()) {
 export function daysUntil(date, now = Date.now()) {
 	return Math.round((isoDateToEpoch(date) - utcMidnight(now)) / DAY_MS);
 }
+
+export function todayISO(now = Date.now()) {
+	return new Date(now).toISOString().slice(0, 10);
+}
+
+export function addDaysISO(date, days) {
+	return new Date(isoDateToEpoch(date) + days * DAY_MS).toISOString().slice(0, 10);
+}

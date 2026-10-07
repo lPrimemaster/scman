@@ -173,3 +173,43 @@ test('invalid response status is rejected', async () => {
 	const id = t.addEvent();
 	assert.equal((await t.request(fed, 'PUT', `/api/events/${id}/response`, { status: 5 })).status, 400);
 });
+
+const race = (o = {}) => ({ name: 'Prova Clube', location: 'Seixal', start: iso(20), end: iso(20), ...o });
+
+test('any athlete can create a CPT race with fixed type, price and change limit', async () => {
+	t.repo.fcm.upsert({ userId: fed.id, token: 'f'.repeat(30), platform: 'android', now: Date.now() });
+	for (const user of [cpt, fed, admin]) {
+		const res = await t.request(
+			user,
+			'POST',
+			'/api/events/races',
+			race({ type: 2, price: '99.00', change_limit: 0 })
+		);
+		assert.equal(res.status, 200);
+		assert.equal(res.body.type, 0);
+		assert.equal(res.body.price, '0.00');
+		assert.equal(res.body.change_limit, 10);
+		assert.equal(res.body.sub_limit_date, iso(10), 'deadline defaults to 10 days before the start');
+		assert.deepEqual(res.body.files, []);
+	}
+	await tick();
+	assert.equal(t.messaging.sent.at(-1).notification.title, 'Nova prova CPT adicionada.');
+	assert.match(t.messaging.sent.at(-1).notification.body, /Prova Clube \(por Ana\)/);
+});
+
+test('CPT race deadline: custom, clamped to today, validated', async () => {
+	const custom = await t.request(cpt, 'POST', '/api/events/races', race({ sub_limit_date: iso(15) }));
+	assert.equal(custom.body.sub_limit_date, iso(15));
+
+	const soon = await t.request(cpt, 'POST', '/api/events/races', race({ start: iso(3), end: iso(3) }));
+	assert.equal(soon.body.sub_limit_date, iso(0), 'never before today');
+
+	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ sub_limit_date: iso(25) }))).status, 400);
+	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ sub_limit_date: iso(-1) }))).status, 400);
+	assert.equal(
+		(await t.request(cpt, 'POST', '/api/events/races', race({ start: iso(-2), end: iso(-2) }))).status,
+		400
+	);
+	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ end: iso(19) }))).status, 400);
+	assert.equal((await t.request(cpt, 'POST', '/api/events/races', race({ name: '' }))).status, 400);
+});

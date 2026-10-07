@@ -19,6 +19,9 @@ export const EVENT_TYPE_OPTIONS = ([0, 1, 2, 3] as EventType[]).map((value) => (
 	label: EVENT_TYPES[value].label
 }));
 
+/** CPT races created by athletes: the server fixes type, price and change limit. */
+export const MEMBER_RACE = { changeLimit: 10, deadlineDays: 10 };
+
 export const ROLE_LABELS: Record<Role, string> = {
 	admin: 'Administrador',
 	federado: 'Federado',

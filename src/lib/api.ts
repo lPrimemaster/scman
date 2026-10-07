@@ -5,6 +5,7 @@ import type {
 	EventType,
 	Invite,
 	ManagedUser,
+	RaceInput,
 	ResponseStatus,
 	Role,
 	TokenCheck,
@@ -118,6 +119,7 @@ export const api = {
 		get: (id: number) => get<EventDetail>(`/api/events/${id}`),
 		respond: (id: number, status: ResponseStatus) => put<EventDetail>(`/api/events/${id}/response`, { status }),
 		create: (event: EventInput) => post<EventItem>('/api/events', event),
+		createRace: (race: RaceInput) => post<EventItem>('/api/events/races', race),
 		update: (id: number, event: EventInput) => put<EventItem>(`/api/events/${id}`, event),
 		remove: (id: number) => del<{ ok: true }>(`/api/events/${id}`)
 	},
