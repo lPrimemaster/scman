@@ -10,6 +10,7 @@ import { EventList } from '../features/events/EventList';
 import { RaceFormDialog } from '../features/events/RaceForm';
 import { useEventDialog } from '../features/events/useEventDialog';
 import { PushPrompt } from '../features/account/PushPrompt';
+import { InstallPrompt } from '../features/account/InstallPrompt';
 
 const PREVIEW_COUNT = 5;
 
@@ -102,6 +103,7 @@ export const Home: Component = () => {
 	return (
 		<>
 			<PageHeader title={`Olá, ${firstName() ?? ''}`} subtitle='Próximos eventos do clube.' />
+			<InstallPrompt />
 			<PushPrompt />
 			<div class='flex flex-col gap-5'>
 				<PendingSection />

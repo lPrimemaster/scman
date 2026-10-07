@@ -8,6 +8,7 @@ import { Button, IconButton } from '../ui/Button';
 import { theme, toggleTheme } from '../../lib/theme';
 import { NotificationsSetting } from '../../features/account/NotificationsSetting';
 import { ChangePasswordDialog } from '../../features/account/ChangePasswordDialog';
+import { InstallAppSetting } from '../../features/account/InstallPrompt';
 import { cx } from '../ui/cx';
 
 export const APP_VERSION = 'v0.8';
@@ -140,6 +141,7 @@ export const AppShell: ParentComponent = (props) => {
 							</div>
 							<NotificationsSetting />
 							<div class='flex flex-col gap-2'>
+								<InstallAppSetting />
 								<Button
 									icon='lock'
 									block

@@ -3,6 +3,7 @@ import { enablePush, pushState, refreshPushState } from '../../lib/push';
 import { toast, toastError } from '../../lib/toast';
 import { Button, IconButton } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
+import { installCardVisible } from './InstallPrompt';
 
 const DISMISSED_KEY = 'push.prompt.dismissed';
 
@@ -14,7 +15,7 @@ function readDismissed() {
 	}
 }
 
-/** One-time invitation on Home to turn notifications on (or install the app on iPhone). */
+/** One-time invitation on Home to turn notifications on. Waits while the install card is showing. */
 export const PushPrompt: Component = () => {
 	const [dismissed, setDismissed] = createSignal(readDismissed());
 	const [busy, setBusy] = createSignal(false);
@@ -44,24 +45,17 @@ export const PushPrompt: Component = () => {
 	}
 
 	return (
-		<Show when={!dismissed() && (pushState() === 'off' || pushState() === 'needs-install')}>
+		<Show when={!dismissed() && pushState() === 'off' && !installCardVisible()}>
 			<div class='mb-5 flex items-start gap-3 rounded-2xl border border-accent/30 bg-accent-soft p-4'>
 				<Icon name='bell' class='mt-0.5 size-5 shrink-0 text-accent-strong' />
 				<div class='min-w-0 flex-1'>
 					<p class='text-sm font-medium'>Recebe avisos de eventos e prazos</p>
 					<p class='mt-0.5 text-sm text-fg-muted'>
-						<Show
-							when={pushState() === 'needs-install'}
-							fallback='Sabe logo quando há um novo evento, uma alteração ou um prazo a terminar.'
-						>
-							No iPhone: Partilhar → Adicionar ao ecrã principal, e ativa as notificações na app.
-						</Show>
+						Sabe logo quando há um novo evento, uma alteração ou um prazo a terminar.
 					</p>
-					<Show when={pushState() === 'off'}>
-						<Button size='sm' variant='primary' icon='bell' class='mt-3' loading={busy()} onClick={enable}>
-							Ativar notificações
-						</Button>
-					</Show>
+					<Button size='sm' variant='primary' icon='bell' class='mt-3' loading={busy()} onClick={enable}>
+						Ativar notificações
+					</Button>
 				</div>
 				<IconButton icon='x' label='Dispensar' onClick={dismiss} class='-mt-1 -mr-1' />
 			</div>

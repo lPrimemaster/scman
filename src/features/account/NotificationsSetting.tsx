@@ -47,8 +47,7 @@ export const NotificationsSetting: Component = () => {
 								Bloqueadas no browser. Permite-as nas definições do site.
 							</Match>
 							<Match when={pushState() === 'needs-install'}>
-								No iPhone, adiciona a app ao ecrã principal (Partilhar → Adicionar ao ecrã principal) e
-								ativa-as lá.
+								No iPhone, só funcionam na app instalada: usa “Instalar app” abaixo.
 							</Match>
 							<Match when={pushState() === 'unsupported'}>Este browser não suporta notificações.</Match>
 							<Match when={pushState() === 'unavailable'}>Indisponíveis de momento.</Match>

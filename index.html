@@ -26,6 +26,11 @@
 					t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 				document.documentElement.dataset.theme = t;
 			})();
+			// Keep Chrome's install prompt if it fires before the app has loaded (see src/lib/pwa.ts)
+			addEventListener('beforeinstallprompt', function (e) {
+				e.preventDefault();
+				window.__installPrompt = e;
+			});
 		</script>
 	</head>
 	<body>

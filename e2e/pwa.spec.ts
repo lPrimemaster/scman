@@ -40,19 +40,31 @@ test.describe('installable web app', () => {
 			});
 			void cdp.send('ServiceWorker.enable');
 		});
-		await cdp.send('ServiceWorker.deliverPushMessage', {
-			origin: new URL(page.url()).origin,
-			registrationId,
-			data: JSON.stringify({ title: 'Evento alterado: Volta', body: 'Local: Évora → Beja', url: '/?event=3' })
-		});
-
-		await expect
-			.poll(() =>
-				page.evaluate(async () => {
-					const reg = await navigator.serviceWorker.ready;
-					return (await reg.getNotifications()).map((n) => ({ title: n.title, body: n.body, data: n.data }));
+		const deliver = () =>
+			cdp.send('ServiceWorker.deliverPushMessage', {
+				origin: new URL(page.url()).origin,
+				registrationId,
+				data: JSON.stringify({
+					title: 'Evento alterado: Volta',
+					body: 'Local: Évora → Beja',
+					url: '/?event=3',
+					tag: 'e2e'
 				})
-			)
+			});
+		const shown = () =>
+			page.evaluate(async () => {
+				const reg = await navigator.serviceWorker.ready;
+				return (await reg.getNotifications()).map((n) => ({ title: n.title, body: n.body, data: n.data }));
+			});
+
+		// The worker may still be starting when the first message arrives; re-deliver until it shows.
+		// The tag makes a repeat replace the earlier notification instead of adding another.
+		await expect
+			.poll(async () => {
+				const list = await shown();
+				if (list.length === 0) await deliver();
+				return list;
+			})
 			.toEqual([{ title: 'Evento alterado: Volta', body: 'Local: Évora → Beja', data: { url: '/?event=3' } }]);
 	});
 
