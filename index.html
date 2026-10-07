@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-PT">
 	<head>
 		<meta charset="utf-8" />
@@ -10,6 +10,18 @@
 		<title>Seixal Clube 1925</title>
 		<link rel="icon" type="image/svg+xml" href="/logo.svg" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<script>
+			// Apply the saved or system theme before first paint (see src/lib/theme.ts)
+			(function () {
+				var t;
+				try {
+					t = localStorage.getItem('theme');
+				} catch (e) {}
+				if (t !== 'light' && t !== 'dark')
+					t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				document.documentElement.dataset.theme = t;
+			})();
+		</script>
 	</head>
 	<body>
 		<noscript>É necessário ativar o JavaScript para usar esta aplicação.</noscript>

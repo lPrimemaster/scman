@@ -2,7 +2,8 @@
 
 /* ============================================================
    Design tokens — neutral zinc surfaces, club gold accent.
-   Light by default, dark when the system prefers it.
+   Light by default; dark when <html data-theme="dark">, set before first paint
+   from the saved choice or the system preference (see index.html, lib/theme.ts).
    ============================================================ */
 :root {
 	color-scheme: light;
@@ -33,33 +34,31 @@
 	--ring: rgb(168 134 42 / 0.35);
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		color-scheme: dark;
-		--bg: #0c0c0e;
-		--surface: #151518;
-		--surface-2: #1e1e22;
-		--border: #2a2a2f;
-		--fg: #f4f4f5;
-		--fg-muted: #a1a1aa;
-		--accent: #cda948;
-		--accent-strong: #e0c063;
-		--accent-soft: #2a2414;
-		--accent-fg: #17140b;
-		--danger: #f87171;
-		--danger-soft: #2c1414;
-		--success: #4ade80;
-		--success-soft: #10241a;
-		--warning: #fbbf24;
-		--warning-soft: #2a2010;
-		--viz-going: #3987e5;
-		--viz-going-soft: #1b2a40;
-		--viz-maybe: #6b6b73;
-		--viz-not-going: #e66767;
-		--viz-track: #26262b;
-		--viz-grid: #26262b;
-		--ring: rgb(205 169 72 / 0.4);
-	}
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	--bg: #0c0c0e;
+	--surface: #151518;
+	--surface-2: #1e1e22;
+	--border: #2a2a2f;
+	--fg: #f4f4f5;
+	--fg-muted: #a1a1aa;
+	--accent: #cda948;
+	--accent-strong: #e0c063;
+	--accent-soft: #2a2414;
+	--accent-fg: #17140b;
+	--danger: #f87171;
+	--danger-soft: #2c1414;
+	--success: #4ade80;
+	--success-soft: #10241a;
+	--warning: #fbbf24;
+	--warning-soft: #2a2010;
+	--viz-going: #3987e5;
+	--viz-going-soft: #1b2a40;
+	--viz-maybe: #6b6b73;
+	--viz-not-going: #e66767;
+	--viz-track: #26262b;
+	--viz-grid: #26262b;
+	--ring: rgb(205 169 72 / 0.4);
 }
 
 @theme inline {
@@ -106,10 +105,8 @@
 		opacity: 0.6;
 		cursor: pointer;
 	}
-	@media (prefers-color-scheme: dark) {
-		input[type='date']::-webkit-calendar-picker-indicator {
-			filter: invert(1);
-		}
+	:root[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
+		filter: invert(1);
 	}
 }
 

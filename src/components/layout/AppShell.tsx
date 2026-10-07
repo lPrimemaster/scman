@@ -4,7 +4,8 @@ import { useSession } from '../../lib/session';
 import { ROLE_LABELS } from '../../lib/events';
 import { Icon, type IconName } from '../ui/Icon';
 import { Dialog } from '../ui/Dialog';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
+import { theme, toggleTheme } from '../../lib/theme';
 import { cx } from '../ui/cx';
 
 export const APP_VERSION = 'v0.8';
@@ -79,8 +80,14 @@ export const AppShell: ParentComponent = (props) => {
 						</For>
 					</nav>
 
+					<IconButton
+						class='ml-auto'
+						icon={theme() === 'dark' ? 'sun' : 'moon'}
+						label={theme() === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+						onClick={toggleTheme}
+					/>
 					<button
-						class='ml-auto flex cursor-pointer items-center gap-2 rounded-full py-1 pr-1 pl-3 hover:bg-surface-2'
+						class='-ml-4 flex cursor-pointer items-center gap-2 rounded-full py-1 pr-1 pl-3 hover:bg-surface-2'
 						onClick={() => setAccountOpen(true)}
 						aria-label='Conta'
 					>
