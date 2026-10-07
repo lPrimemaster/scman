@@ -1357,8 +1357,6 @@ app.get('/api/files/:uuid', async (req, res) => {
 
 		const fpath = path.join(file.path, file.internal_filename);
 
-		console.log('Serving path = ', fpath);
-
 		const stream = fs.createReadStream(
 			fpath
 		);
