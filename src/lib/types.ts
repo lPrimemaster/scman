@@ -87,3 +87,39 @@ export interface Invite {
 }
 
 export type TokenCheck = { valid: true; username: string } | { valid: false; reason: string };
+
+// ---------- Admin statistics ----------
+
+export interface StatsEvent {
+	id: number;
+	name: string;
+	start: string;
+	end: string;
+	type: EventType;
+}
+
+export interface StatsAthlete {
+	id: number;
+	full_name: string;
+	username: string;
+	role: Role;
+	active: boolean;
+	disabled: boolean;
+	/** Approximate join date (from the invite), null for accounts older than invites */
+	joined: string | null;
+}
+
+export interface StatsResponse {
+	user_id: number;
+	event_id: number;
+	status: 0 | 1 | 2;
+	updated_at: string;
+}
+
+export interface AttendanceStats {
+	from: string;
+	to: string;
+	events: StatsEvent[];
+	athletes: StatsAthlete[];
+	responses: StatsResponse[];
+}

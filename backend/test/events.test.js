@@ -111,7 +111,10 @@ test('responding updates attendance and notifies admins', async () => {
 
 	let detail = (await t.request(fed, 'GET', `/api/events/${id}`)).body;
 	assert.equal(detail.me.status, -1);
-	assert.deepEqual(detail.attendance.noanswer.map((a) => a.username), ['admin', 'fed']);
+	assert.deepEqual(
+		detail.attendance.noanswer.map((a) => a.username),
+		['admin', 'fed']
+	);
 	assert.deepEqual(names(detail.attendance.noanswer), ['Ana', 'Filipe'], 'only active federated users expected');
 
 	const res = await t.request(fed, 'PUT', `/api/events/${id}/response`, { status: 1 });

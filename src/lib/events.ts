@@ -7,14 +7,19 @@ interface EventTypeInfo {
 	color: string;
 }
 
+// Validated as a categorical palette (colour-blind separation, contrast) on light and dark surfaces
 export const EVENT_TYPES: Record<EventType, EventTypeInfo> = {
 	0: { label: 'Prova CPT', color: '#3b82f6' },
-	1: { label: 'Estágio Aberto', color: '#10b981' },
-	2: { label: 'Prova Federada', color: '#c9a440' },
+	1: { label: 'Estágio Aberto', color: '#12a37a' },
+	2: { label: 'Prova Federada', color: '#b08a1e' },
 	3: { label: 'Estágio Federado', color: '#8b5cf6' }
 };
 
-export const EVENT_TYPE_OPTIONS = ([0, 1, 2, 3] as EventType[]).map((value) => ({
+export const ALL_EVENT_TYPES: EventType[] = [0, 1, 2, 3];
+/** Event types CPT athletes can see and answer */
+export const OPEN_EVENT_TYPES: EventType[] = [0, 1];
+
+export const EVENT_TYPE_OPTIONS = ALL_EVENT_TYPES.map((value) => ({
 	value,
 	label: EVENT_TYPES[value].label
 }));
@@ -42,6 +47,11 @@ export const RESPONSE_LABELS: Record<ResponseStatus, string> = {
 
 export function isFederated(role: Role | undefined) {
 	return role === 'admin' || role === 'federado';
+}
+
+/** Mirrors the backend visibility rule in `backend/src/lib/roles.js`. */
+export function canSeeEventType(role: Role, type: EventType) {
+	return isFederated(role) || OPEN_EVENT_TYPES.includes(type);
 }
 
 /** Why the user cannot change their answer, or null when they can. */

@@ -16,13 +16,19 @@ const LINKS: Array<{ href: string; title: string; description: string; icon: Ico
 		title: 'Utilizadores',
 		description: 'Permissões, passwords e contas desativadas.',
 		icon: 'users'
+	},
+	{
+		href: '/admin/stats',
+		title: 'Estatísticas',
+		description: 'Respostas por atleta, tipo de evento e mês.',
+		icon: 'chart'
 	}
 ];
 
 export const AdminHome: Component = () => (
 	<>
 		<PageHeader title='Administração' />
-		<div class='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+		<div class='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4'>
 			<For each={LINKS}>
 				{(link) => (
 					<A

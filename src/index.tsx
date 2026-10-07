@@ -13,6 +13,7 @@ import { AdminHome } from './features/admin/AdminHome';
 import { InvitesPage } from './features/admin/InvitesPage';
 import { UsersPage } from './features/admin/UsersPage';
 import { EventsAdmin } from './features/admin/EventsAdmin';
+import { StatsPage } from './features/admin/StatsPage';
 
 if (import.meta.env.DEV) {
 	await import('solid-devtools');
@@ -40,6 +41,7 @@ render(
 						<Route path='/register' component={InvitesPage} />
 						<Route path='/manage' component={UsersPage} />
 						<Route path='/events' component={EventsAdmin} />
+						<Route path='/stats' component={StatsPage} />
 					</Route>
 				</Route>
 

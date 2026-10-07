@@ -344,6 +344,30 @@ export function createRepo(db) {
 			remove: (handle) => q('delete from files where handle = ?').run(handle)
 		},
 
+		// ---------- Statistics (read only) ----------
+		stats: {
+			eventsBetween: (from, to) =>
+				q('select id, name, start, end, type from events where start between ? and ? order by start asc').all(
+					from,
+					to
+				),
+			// `first_invite_expiry` approximates when the account was created
+			athletes: () =>
+				q(`
+					select u.id, u.full_name, u.username, u.role, u.active,
+						ad.user_id is not null as disabled,
+						(select min(i.expires_at) from invites i where i.user_id = u.id) as first_invite_expiry
+					from users u left join account_disabled ad on ad.user_id = u.id
+					order by u.full_name collate nocase
+				`).all(),
+			responsesBetween: (from, to) =>
+				q(`
+					select r.user_id, r.event_id, r.status, r.updated_at
+					from responses r join events e on e.id = r.event_id
+					where e.start between ? and ?
+				`).all(from, to)
+		},
+
 		// ---------- Scheduler ----------
 		schedule: {
 			// (event, user) pairs with a response whose event has not been notified yet

@@ -22,6 +22,14 @@
 	--success-soft: #e8f6ed;
 	--warning: #d97706;
 	--warning-soft: #fdf3e3;
+	/* Charts: answers form a diverging scale (Disponível blue ↔ Indisponível red, Talvez neutral);
+	   "Sem resposta" is the unfilled track. Validated for colour-blind separation and contrast. */
+	--viz-going: #2a78d6;
+	--viz-going-soft: #dbe8f8;
+	--viz-maybe: #a1a1aa;
+	--viz-not-going: #e34948;
+	--viz-track: #ececef;
+	--viz-grid: #ececef;
 	--ring: rgb(168 134 42 / 0.35);
 }
 
@@ -44,6 +52,12 @@
 		--success-soft: #10241a;
 		--warning: #fbbf24;
 		--warning-soft: #2a2010;
+		--viz-going: #3987e5;
+		--viz-going-soft: #1b2a40;
+		--viz-maybe: #6b6b73;
+		--viz-not-going: #e66767;
+		--viz-track: #26262b;
+		--viz-grid: #26262b;
 		--ring: rgb(205 169 72 / 0.4);
 	}
 }
@@ -65,6 +79,12 @@
 	--color-success-soft: var(--success-soft);
 	--color-warning: var(--warning);
 	--color-warning-soft: var(--warning-soft);
+	--color-viz-going: var(--viz-going);
+	--color-viz-going-soft: var(--viz-going-soft);
+	--color-viz-maybe: var(--viz-maybe);
+	--color-viz-not-going: var(--viz-not-going);
+	--color-viz-track: var(--viz-track);
+	--color-viz-grid: var(--viz-grid);
 	--color-ring: var(--ring);
 	--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }

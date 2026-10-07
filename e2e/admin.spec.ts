@@ -122,3 +122,40 @@ test('admin generates a password reset link', async ({ page, browser }, info) =>
 	await expect(user).toHaveURL('/');
 	await user.close();
 });
+
+test('admin sees attendance statistics', async ({ page }) => {
+	await login(page, USERS.admin);
+	await page.goto('/admin');
+	await page.getByRole('link', { name: /Estatísticas/ }).click();
+	await expect(page).toHaveURL(/\/admin\/stats$/);
+
+	// The seed has answers spread over the last ~7 months
+	await page.getByLabel('Período').selectOption({ label: 'Últimos 12 meses' });
+	await expect(page.getByRole('meter', { name: 'Taxa de resposta' }).first()).toBeVisible();
+	await expect(page.getByRole('group', { name: 'Respostas por tipo de evento' })).toBeVisible();
+	await expect(page.getByRole('group', { name: /por mês/ })).toBeVisible();
+
+	// CPT athletes cannot see federated events: those filters are disabled
+	await page.getByRole('radio', { name: 'CPT' }).click();
+	const types = page.getByRole('group', { name: 'Tipos de evento' });
+	await expect(types.getByRole('button', { name: 'Prova Federada' })).toBeDisabled();
+	await expect(types.getByRole('button', { name: 'Prova CPT' })).toBeEnabled();
+
+	// Athlete rows expand into a per-type breakdown (cards on mobile, table on desktop)
+	const athlete = page
+		.getByRole('button', { name: /Rui Pinto/ })
+		.filter({ visible: true })
+		.first();
+	await athlete.click();
+	await expect(athlete).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByText('Estágio Aberto', { exact: true }).filter({ visible: true }).last()).toBeVisible();
+
+	// Event rows open the event dialog
+	await page.getByRole('radio', { name: 'Todos' }).click();
+	await page
+		.getByRole('button', { name: /Prova CPT Almada/ })
+		.filter({ visible: true })
+		.first()
+		.click();
+	await expect(page.getByRole('dialog', { name: 'Prova CPT Almada' })).toBeVisible();
+});

@@ -10,6 +10,7 @@ import eventRoutes from './routes/events.js';
 import fileRoutes from './routes/files.js';
 import pushRoutes from './routes/push.js';
 import paymentRoutes from './routes/payments.js';
+import statsRoutes from './routes/stats.js';
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -45,6 +46,7 @@ export async function buildApp({ repo, push, paypal, storage, secret, logger = f
 	await app.register(fileRoutes, { prefix: '/api/files', ctx });
 	await app.register(pushRoutes, { prefix: '/api/push', ctx });
 	await app.register(paymentRoutes, { prefix: '/api/payments', ctx });
+	await app.register(statsRoutes, { prefix: '/api/stats', ctx });
 
 	return app;
 }

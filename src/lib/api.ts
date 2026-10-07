@@ -1,4 +1,5 @@
 import type {
+	AttendanceStats,
 	EventDetail,
 	EventInput,
 	EventItem,
@@ -127,6 +128,10 @@ export const api = {
 			get<SimilarRace[]>(`/api/events/races/similar${query(params)}`),
 		update: (id: number, event: EventInput) => put<EventItem>(`/api/events/${id}`, event),
 		remove: (id: number) => del<{ ok: true }>(`/api/events/${id}`)
+	},
+	stats: {
+		attendance: (range: { from?: string; to?: string }) =>
+			get<AttendanceStats>(`/api/stats/attendance${query(range)}`)
 	},
 	users: {
 		list: () => get<ManagedUser[]>('/api/users'),
