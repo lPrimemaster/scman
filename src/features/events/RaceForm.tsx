@@ -1,6 +1,6 @@
 import { createResource, createSignal, For, Show, type Component } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { EventItem } from '../../lib/types';
+import type { EventItem, RaceInput } from '../../lib/types';
 import { api, ApiError } from '../../lib/api';
 import { addDays, formatRange, todayISO } from '../../lib/dates';
 import { createDebounced } from '../../lib/debounce';
@@ -26,11 +26,10 @@ export const RaceFormDialog: Component<{
 	onOpenExisting: (id: number) => void;
 }> = (props) => {
 	const today = todayISO();
-	const [form, setForm] = createStore({
+	const [form, setForm] = createStore<RaceInput>({
 		name: '',
 		location: '',
 		start: '',
-		end: '',
 		sub_limit_date: '',
 		description: ''
 	});
@@ -50,7 +49,6 @@ export const RaceFormDialog: Component<{
 
 	function setStart(start: string) {
 		setForm('start', start);
-		if (start && (!form.end || form.end < start)) setForm('end', start);
 		if (start && !deadlineTouched()) setForm('sub_limit_date', defaultRaceDeadline(start, today));
 	}
 
@@ -133,7 +131,7 @@ export const RaceFormDialog: Component<{
 						</ul>
 					</Notice>
 				</Show>
-				<Field label='Início'>
+				<Field label='Data' hint='Provas de um só dia.'>
 					<Input
 						name='start'
 						type='date'
@@ -143,20 +141,9 @@ export const RaceFormDialog: Component<{
 						required
 					/>
 				</Field>
-				<Field label='Fim'>
-					<Input
-						name='end'
-						type='date'
-						value={form.end}
-						min={form.start || today}
-						onInput={(e) => setForm('end', e.currentTarget.value)}
-						required
-					/>
-				</Field>
 				<Field
 					label='Limite de inscrição'
-					hint={`Por defeito, ${MEMBER_RACE.deadlineDays} dias antes do início.`}
-					class='sm:col-span-2'
+					hint={`Por defeito, ${MEMBER_RACE.deadlineDays} dias antes da prova.`}
 				>
 					<Input
 						name='sub_limit_date'

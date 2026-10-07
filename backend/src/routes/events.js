@@ -44,11 +44,12 @@ export const MEMBER_RACE = { type: 0, price: '0.00', change_limit: 10, deadlineD
 
 const memberRaceBody = {
 	type: 'object',
-	required: ['name', 'location', 'start', 'end'],
+	required: ['name', 'location', 'start'],
 	properties: {
 		name: { type: 'string', minLength: 1 },
 		location: { type: 'string', minLength: 1 },
 		start: isoDate,
+		// Single-day races: when given, the end must be the start date
 		end: isoDate,
 		sub_limit_date: isoDate,
 		description: { type: ['string', 'null'] }
@@ -249,10 +250,12 @@ export default async function eventRoutes(app, { ctx }) {
 		if (existing) throw conflict('Race already exists.', { existingId: existing.id });
 		const sub_limit_date = req.body.sub_limit_date ?? defaultRaceDeadline(start, today);
 		if (start < today) throw badRequest('Start date is in the past.');
+		if (req.body.end && req.body.end !== start) throw badRequest('Races last a single day.');
 		if (sub_limit_date < today || sub_limit_date > start) throw badRequest('Invalid deadline.');
 
 		const row = toEventRow({
 			...req.body,
+			end: start,
 			sub_limit_date,
 			type: MEMBER_RACE.type,
 			price: MEMBER_RACE.price,

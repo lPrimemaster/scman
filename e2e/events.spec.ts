@@ -71,8 +71,8 @@ test('a cpt athlete creates a CPT race without price or change limit fields', as
 
 	await form.getByLabel('Nome').fill(name);
 	await form.getByLabel('Local').fill('Amora');
-	await form.getByLabel('Início').fill(isoIn(25));
-	await expect(form.getByLabel('Fim')).toHaveValue(isoIn(25));
+	await expect(form.getByLabel('Fim')).toHaveCount(0);
+	await form.getByLabel('Data').fill(isoIn(25));
 	await expect(form.getByLabel('Limite de inscrição')).toHaveValue(isoIn(15));
 	await form.getByRole('button', { name: 'Criar prova' }).click();
 
