@@ -1,4 +1,4 @@
-import { conflict, notFound } from '../lib/errors.js';
+import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { ROLES } from '../lib/roles.js';
 import { INVITE_TTL_MS, inviteLink, newToken, resetLink } from './invites.js';
 
@@ -75,6 +75,9 @@ export default async function userRoutes(app, { ctx }) {
 			if (!repo.users.byId(id)) throw notFound('User not found.');
 
 			const { role, disabled } = req.body;
+			if (id === req.user.id && ((role !== undefined && role !== 'admin') || disabled)) {
+				throw badRequest('You cannot demote or disable your own account.');
+			}
 			repo.transaction(() => {
 				if (role !== undefined) repo.users.setRole(id, role);
 				if (disabled !== undefined) repo.users.setDisabled(id, disabled);

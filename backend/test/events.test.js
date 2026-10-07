@@ -114,6 +114,8 @@ test('responding updates attendance and notifies admins', async () => {
 
 	const res = await t.request(fed, 'PUT', `/api/events/${id}/response`, { status: 1 });
 	assert.equal(res.status, 200);
+	assert.equal((await t.request(fed, 'GET', '/api/events')).body[0].my_status, 1);
+	assert.equal((await t.request(admin, 'GET', '/api/events')).body[0].my_status, -1);
 	assert.deepEqual(res.body.attendance.going, ['Filipe']);
 	assert.equal(res.body.me.status, 1);
 

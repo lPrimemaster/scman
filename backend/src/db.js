@@ -254,6 +254,12 @@ export function createRepo(db) {
 
 		// ---------- Responses ----------
 		responses: {
+			statusByEvent: (userId) =>
+				new Map(
+					q('select event_id, status from responses where user_id = ?')
+						.all(userId)
+						.map((r) => [r.event_id, r.status])
+				),
 			get: (userId, eventId) =>
 				q('select status, count from responses where user_id = ? and event_id = ?').get(userId, eventId),
 			upsert: (userId, eventId, status) =>

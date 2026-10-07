@@ -125,3 +125,8 @@ test('password reset flow reuses the open link', async () => {
 		200
 	);
 });
+
+test('admins cannot demote or disable themselves', async () => {
+	assert.equal((await t.request(admin, 'PATCH', `/api/users/${admin.id}`, { role: 'cpt' })).status, 400);
+	assert.equal((await t.request(admin, 'PATCH', `/api/users/${admin.id}`, { disabled: true })).status, 400);
+});

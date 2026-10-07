@@ -143,7 +143,10 @@ export default async function eventRoutes(app, { ctx }) {
 				throw forbidden('Insufficient permissions for this event type.');
 			}
 			const types = type !== undefined ? [type] : visibleEventTypes(req.user.role);
-			return repo.events.list({ types, upcoming, limit }).map(toEventDto);
+			const mine = repo.responses.statusByEvent(req.user.id);
+			return repo.events
+				.list({ types, upcoming, limit })
+				.map((row) => ({ ...toEventDto(row), my_status: mine.get(row.id) ?? -1 }));
 		}
 	);
 
