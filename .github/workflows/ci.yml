@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+          cache-dependency-path: |
+            yarn.lock
+            backend/yarn.lock
+
+      - run: yarn install --frozen-lockfile
+      - run: yarn --cwd backend install --frozen-lockfile
+
+      - name: Lint
+        run: yarn lint
+      - name: Typecheck
+        run: yarn typecheck
+      - name: Frontend unit tests
+        run: yarn test
+      - name: Backend tests
+        run: yarn test:backend
+      - name: Build
+        run: yarn build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: yarn e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
